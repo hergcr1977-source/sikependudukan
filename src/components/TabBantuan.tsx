@@ -85,6 +85,8 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   const [updateDesil, setUpdateDesil] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const [dbReady, setDbReady] = useState(false);
+
   const fetchPenduduk = useCallback(async () => {
     try {
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -118,14 +120,20 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     setKKGroups(Array.from(map.values()));
   };
 
-  // Auto-migrate: pastikan kolom desil ada di database
+  // Setup database dulu, baru fetch penduduk
   useEffect(() => {
-    fetch('/api/setup-db').catch(() => {});
+    const init = async () => {
+      try {
+        await fetch('/api/setup-db');
+      } catch { /* ignore */ }
+      setDbReady(true);
+    };
+    init();
   }, []);
 
   useEffect(() => {
-    fetchPenduduk();
-  }, [fetchPenduduk]);
+    if (dbReady) fetchPenduduk();
+  }, [dbReady, fetchPenduduk]);
 
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);

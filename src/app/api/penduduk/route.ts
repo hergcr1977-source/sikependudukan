@@ -144,21 +144,24 @@ export async function PUT(request: NextRequest) {
     if (data.desil !== undefined) updateData.desil = data.desil || null;
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
-    const penduduk = await db.penduduk.update({
-      where: { id },
-      data: updateData,
-    });
-
-    // Auto-propagate: jika edit KK head & keterangan berubah, update semua anggota
-    const isKKHead = penduduk.statusKeluarga === 'KEPALA KELUARGA';
-    if (isKKHead && data.keterangan !== undefined) {
-      await db.penduduk.updateMany({
-        where: {
-          noKK: penduduk.noKK,
-          id: { not: penduduk.id },
-        },
-        data: { keterangan: data.keterangan || null },
+    let penduduk;
+    try {
+      penduduk = await db.penduduk.update({
+        where: { id },
+        data: updateData,
       });
+    } catch (updateError) {
+      // Fallback: jika kolom desil belum ada di DB, coba tanpa desil
+      if (updateData.desil !== undefined) {
+        console.warn('Retry update without desil field:', updateError);
+        delete updateData.desil;
+        penduduk = await db.penduduk.update({
+          where: { id },
+          data: updateData,
+        });
+      } else {
+        throw updateError;
+      }
     }
 
     return NextResponse.json(penduduk);
