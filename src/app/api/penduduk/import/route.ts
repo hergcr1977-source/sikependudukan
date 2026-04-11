@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
+import { toUpperCase, validateNIK } from '@/lib/utils-kependudukan';
+import { ALAMAT_LENGKAP_DEFAULT } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
@@ -12,13 +13,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
     }
 
+    // Pastikan kolom alamatLengkap ada di database
+    try {
+      const cols = await db.$queryRawUnsafe('PRAGMA table_info(Penduduk)');
+      const colNames = (cols as Array<{ name: string }>).map(c => c.name);
+      if (!colNames.includes('alamatLengkap')) {
+        await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN alamatLengkap TEXT;');
+      }
+    } catch { /* abaikan jika gagal */ }
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as string[][];
 
+    // Pre-fetch semua NIK yang sudah ada (sekali query, bukan per-baris)
+    const existingNIKs = new Set(
+      (await db.penduduk.findMany({ select: { nik: true } })).map(p => p.nik)
+    );
+
     let currentNoKK = '';
-    let imported = 0;
     let errors: string[] = [];
 
     // XLSX column mapping (data starts from Col B = index 0):
@@ -44,6 +58,16 @@ export async function POST(request: NextRequest) {
     const COL_PANGGILAN = 14;
     const COL_KETERANGAN = 15;
     const COL_BPJS = 16;
+
+    // Siapkan semua data valid terlebih dahulu
+    const recordsToInsert: Array<{
+      noKK: string; nik: string; namaLengkap: string; jenisKelamin: string;
+      statusKeluarga: string; tempatLahir: string; tanggalLahir: Date;
+      agama: string; pendidikan: string; pekerjaan: string; statusPerkawinan: string;
+      kewarganegaraan: string; namaAyah: string; namaIbu: string;
+      namaPanggilan: string | null; keterangan: string | null;
+      punyaKTP: string; bantuan: string; bpjs: string | null; alamatLengkap: string;
+    }> = [];
 
     // Skip header rows (index 0 = header, index 1 = sub-header Ayah/Ibu)
     for (let i = 2; i < rows.length; i++) {
@@ -91,6 +115,12 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Cek duplikat NIK dari cache (sangat cepat, tanpa query DB)
+      if (existingNIKs.has(nik)) {
+        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada (${namaLengkap})`);
+        continue;
+      }
+
       // Parse tanggal lahir - XLSX with cellDates:true + raw:false returns formatted strings
       let tanggalLahirStr = tanggalLahirRaw;
       if (tanggalLahirRaw && tanggalLahirRaw.includes('/')) {
@@ -121,39 +151,43 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      try {
-        const existing = await db.penduduk.findFirst({ where: { nik } });
-        if (existing) {
-          errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada (${namaLengkap})`);
-          continue;
-        }
+      // Tandai NIK sudah diproses agar tidak duplikat dalam batch ini
+      existingNIKs.add(nik);
 
-        await db.penduduk.create({
-          data: {
-            noKK: currentNoKK,
-            nik,
-            namaLengkap: toUpperCase(namaLengkap),
-            jenisKelamin: toUpperCase(jenisKelamin),
-            statusKeluarga: toUpperCase(statusKeluarga),
-            tempatLahir: toUpperCase(tempatLahir),
-            tanggalLahir: new Date(tanggalLahirStr),
-            agama: toUpperCase(agama),
-            pendidikan: toUpperCase(pendidikan),
-            pekerjaan: toUpperCase(pekerjaan),
-            statusPerkawinan: toUpperCase(statusPerkawinan),
-            kewarganegaraan: toUpperCase(kewarganegaraan),
-            namaAyah: toUpperCase(namaAyah),
-            namaIbu: toUpperCase(namaIbu),
-            namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
-            keterangan: keterangan ? keterangan : null,
-            punyaKTP: 'BELUM',
-            bantuan: '[]',
-            bpjs: bpjs ? bpjs.toUpperCase() : null,
-          },
-        });
-        imported++;
-      } catch (err) {
-        errors.push(`Baris ${i + 1}: Gagal menyimpan ${namaLengkap} - ${String(err)}`);
+      recordsToInsert.push({
+        noKK: currentNoKK,
+        nik,
+        namaLengkap: toUpperCase(namaLengkap),
+        jenisKelamin: toUpperCase(jenisKelamin),
+        statusKeluarga: toUpperCase(statusKeluarga),
+        tempatLahir: toUpperCase(tempatLahir),
+        tanggalLahir: new Date(tanggalLahirStr),
+        agama: toUpperCase(agama),
+        pendidikan: toUpperCase(pendidikan),
+        pekerjaan: toUpperCase(pekerjaan),
+        statusPerkawinan: toUpperCase(statusPerkawinan),
+        kewarganegaraan: toUpperCase(kewarganegaraan),
+        namaAyah: toUpperCase(namaAyah),
+        namaIbu: toUpperCase(namaIbu),
+        namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
+        keterangan: keterangan ? keterangan : null,
+        punyaKTP: 'BELUM',
+        bantuan: '[]',
+        bpjs: bpjs ? bpjs.toUpperCase() : null,
+        alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
+      });
+    }
+
+    // Batch insert menggunakan transaction (jauh lebih cepat dari insert satu per satu)
+    let imported = 0;
+    if (recordsToInsert.length > 0) {
+      const BATCH_SIZE = 50;
+      for (let batchStart = 0; batchStart < recordsToInsert.length; batchStart += BATCH_SIZE) {
+        const batch = recordsToInsert.slice(batchStart, batchStart + BATCH_SIZE);
+        await db.$transaction(
+          batch.map(r => db.penduduk.create({ data: r }))
+        );
+        imported += batch.length;
       }
     }
 
