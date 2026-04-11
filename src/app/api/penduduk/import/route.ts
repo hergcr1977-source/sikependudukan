@@ -8,7 +8,7 @@ import {
 } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
-export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 // ========== DATE PARSER ==========
 function parseTanggal(raw: any): string | null {
@@ -85,13 +85,9 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
 
-    // ===== STEP 0: Test DB connection first =====
-    try {
-      await db.penduduk.count();
-    } catch (dbError: unknown) {
-      const msg = dbError instanceof Error ? dbError.message : String(dbError);
-      console.error('[Import Penduduk] DB connection failed:', msg);
-      return NextResponse.json({ error: 'Koneksi database gagal: ' + msg.substring(0, 200) }, { status: 500 });
+    // ===== STEP 0: Test DB connection =====
+    try { await db.penduduk.count(); } catch (e: unknown) {
+      return NextResponse.json({ error: 'Koneksi database gagal: ' + String(e).substring(0, 200) }, { status: 500 });
     }
 
     // ===== STEP 1: Parse Excel =====
@@ -100,15 +96,9 @@ export async function POST(request: NextRequest) {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
 
-    console.log(`[Import Penduduk] Total rows in Excel: ${rows.length}`);
-
-    if (rows.length < 2) {
-      return NextResponse.json({ error: 'File kosong' }, { status: 400 });
-    }
+    if (rows.length < 2) return NextResponse.json({ error: 'File kosong' }, { status: 400 });
 
     const headerIdx = findHeaderRow(rows);
-    console.log(`[Import Penduduk] Header row: ${headerIdx}`);
-
     const detected = detectColumns(rows[headerIdx]);
     const COL = {
       NO_KK: detected.NO_KK ?? 0, NAMA: detected.NAMA ?? 1, NIK: detected.NIK ?? 2,
@@ -120,26 +110,16 @@ export async function POST(request: NextRequest) {
       PANGGILAN: detected.PANGGILAN ?? 14, KETERANGAN: detected.KETERANGAN ?? 15,
     };
 
-    console.log(`[Import Penduduk] Detected columns:`, COL);
-
-    // ===== STEP 2: Collect all valid rows first =====
-    const allRecords: Array<{
-      noKK: string; nik: string; namaLengkap: string; jenisKelamin: string;
-      statusKeluarga: string; tempatLahir: string; tanggalLahir: string;
-      agama: string; pendidikan: string; pekerjaan: string; statusPerkawinan: string;
-      kewarganegaraan: string; namaAyah: string; namaIbu: string;
-      namaPanggilan: string | null; keterangan: string | null;
-      rowNum: number;
-    }> = [];
-    
+    // ===== STEP 2: Collect all valid records =====
+    const allRecords: Array<[string, string, string, string, string, string, string, string, string, string, string, string, string, string, string | null, string | null]> = [];
     let currentNoKK = '';
     let skipped = 0;
     let dateParseFails = 0;
     const errors: string[] = [];
-    const startRow = headerIdx + 1;
     const seenNiks = new Set<string>();
+    const alamatDefault = ALAMAT_LENGKAP_DEFAULT || generateAlamatLengkap();
 
-    for (let i = startRow; i < rows.length; i++) {
+    for (let i = headerIdx + 1; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length < 3) continue;
 
@@ -165,188 +145,90 @@ export async function POST(request: NextRequest) {
       const namaPanggilan = get(COL.PANGGILAN);
       const keterangan = get(COL.KETERANGAN);
 
-      // Skip completely empty rows
       if (!namaLengkap) continue;
       if (!nik && !jenisKelamin && !tempatLahir && !statusKeluarga && !tanggalLahir) continue;
 
-      // Track current NoKK
       if (noKKRaw) currentNoKK = noKKRaw;
       if (!currentNoKK) { skipped++; continue; }
       if (!nik) { skipped++; continue; }
-
-      // Skip duplicate NIKs within the same file
       if (seenNiks.has(nik)) { skipped++; continue; }
       seenNiks.add(nik);
 
-      // Validate tanggal lahir
       if (!tanggalLahir) {
         dateParseFails++;
-        errors.push(`Baris ${i + 1}: ${namaLengkap} - tanggal tidak valid (${String(row[COL.TGL_LAHIR]).substring(0, 30)})`);
+        errors.push(`Baris ${i + 1}: ${namaLengkap} - tanggal tidak valid`);
         skipped++;
         continue;
       }
 
-      allRecords.push({
-        noKK: currentNoKK,
-        nik,
-        namaLengkap: toUpperCase(namaLengkap) || 'TIDAK DIKETAHUI',
-        jenisKelamin: toUpperCase(jenisKelamin) || 'LAKI-LAKI',
-        statusKeluarga: toUpperCase(statusKeluarga) || 'KEPALA KELUARGA',
-        tempatLahir: toUpperCase(tempatLahir) || '-',
+      allRecords.push([
+        currentNoKK, nik,
+        toUpperCase(namaLengkap) || 'TIDAK DIKETAHUI',
+        toUpperCase(jenisKelamin) || 'LAKI-LAKI',
+        toUpperCase(statusKeluarga) || 'KEPALA KELUARGA',
+        toUpperCase(tempatLahir) || '-',
         tanggalLahir,
-        agama: toUpperCase(agama) || 'ISLAM',
-        pendidikan: toUpperCase(pendidikan) || 'TIDAK/BELUM SEKOLAH',
-        pekerjaan: toUpperCase(pekerjaan) || 'BELUM/TIDAK BEKERJA',
-        statusPerkawinan: toUpperCase(statusPerkawinan) || 'BELUM MENIKAH',
-        kewarganegaraan: toUpperCase(kewarganegaraan) || 'WNI',
-        namaAyah: toUpperCase(namaAyah) || '-',
-        namaIbu: toUpperCase(namaIbu) || '-',
-        namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
-        keterangan: keterangan ? toUpperCase(keterangan) : null,
-        rowNum: i + 1,
-      });
+        toUpperCase(agama) || 'ISLAM',
+        toUpperCase(pendidikan) || 'TIDAK/BELUM SEKOLAH',
+        toUpperCase(pekerjaan) || 'BELUM/TIDAK BEKERJA',
+        toUpperCase(statusPerkawinan) || 'BELUM MENIKAH',
+        toUpperCase(kewarganegaraan) || 'WNI',
+        toUpperCase(namaAyah) || '-',
+        toUpperCase(namaIbu) || '-',
+        namaPanggilan ? toUpperCase(namaPanggilan) : null,
+        keterangan ? toUpperCase(keterangan) : null,
+      ]);
     }
-
-    console.log(`[Import Penduduk] Valid records to import: ${allRecords.length}, skipped: ${skipped}`);
 
     if (allRecords.length === 0) {
       return NextResponse.json({
-        message: 'Tidak ada data baru untuk diimpor',
-        imported: 0, updated: 0, skipped,
+        message: 'Tidak ada data untuk diimpor', imported: 0, skipped,
         dateParseFails: dateParseFails > 0 ? dateParseFails : undefined,
         errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
         elapsed: ((Date.now() - startTime) / 1000).toFixed(1) + 's',
       });
     }
 
-    // ===== STEP 3: Batch upsert using PostgreSQL ON CONFLICT =====
-    // Build parameterized SQL for bulk insert with upsert
-    const niks = allRecords.map(r => r.nik);
-    const alamatDefault = ALAMAT_LENGKAP_DEFAULT || generateAlamatLengkap();
+    // ===== STEP 3: Fast upsert - Delete existing + Bulk insert =====
+    const niks = allRecords.map(r => r[1]);
+    const nikPlaceholders = niks.map((_, i) => `$${i + 1}`).join(',');
+    
+    // Delete existing records with matching NIKs
+    await db.$executeRawUnsafe(
+      `DELETE FROM "Penduduk" WHERE "nik" IN (${nikPlaceholders})`,
+      ...niks
+    );
 
-    let imported = 0;
-    let updated = 0;
+    // Bulk insert all records using Prisma createMany
+    const BATCH_SIZE = 100;
+    let totalInserted = 0;
 
-    // Process in batches of 50 to avoid query size limits
-    const BATCH_SIZE = 50;
-    for (let batchStart = 0; batchStart < allRecords.length; batchStart += BATCH_SIZE) {
-      const batch = allRecords.slice(batchStart, batchStart + BATCH_SIZE);
-
-      // Build the SQL values clause
-      const valuesClauses: string[] = [];
-      const params: any[] = [];
-      let paramIdx = 1;
-
-      for (const r of batch) {
-        const vals = [
-          r.noKK, r.nik, r.namaLengkap, r.jenisKelamin, r.statusKeluarga,
-          r.tempatLahir, r.tanggalLahir, r.agama, r.pendidikan, r.pekerjaan,
-          r.statusPerkawinan, r.kewarganegaraan, r.namaAyah, r.namaIbu,
-          r.namaPanggilan, null, 'BELUM', '[]', null, null,
-          ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
-          KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
-          alamatDefault, r.keterangan,
-        ];
-        const placeholders = vals.map(() => `$${paramIdx++}`);
-        params.push(...vals);
-        valuesClauses.push(`(${placeholders.join(', ')})`);
-      }
-
-      const sql = `
-        INSERT INTO "Penduduk" (
-          "noKK", "nik", "namaLengkap", "jenisKelamin", "statusKeluarga",
-          "tempatLahir", "tanggalLahir", "agama", "pendidikan", "pekerjaan",
-          "statusPerkawinan", "kewarganegaraan", "namaAyah", "namaIbu",
-          "namaPanggilan", "noHP", "punyaKTP", "bantuan", "bpjs", "desil",
-          "alamat", "rt", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi",
-          "alamatLengkap", "keterangan"
-        ) VALUES ${valuesClauses.join(', ')}
-        ON CONFLICT ("nik") DO UPDATE SET
-          "noKK" = EXCLUDED."noKK",
-          "namaLengkap" = EXCLUDED."namaLengkap",
-          "jenisKelamin" = EXCLUDED."jenisKelamin",
-          "statusKeluarga" = EXCLUDED."statusKeluarga",
-          "tempatLahir" = EXCLUDED."tempatLahir",
-          "tanggalLahir" = EXCLUDED."tanggalLahir",
-          "agama" = EXCLUDED."agama",
-          "pendidikan" = EXCLUDED."pendidikan",
-          "pekerjaan" = EXCLUDED."pekerjaan",
-          "statusPerkawinan" = EXCLUDED."statusPerkawinan",
-          "kewarganegaraan" = EXCLUDED."kewarganegaraan",
-          "namaAyah" = EXCLUDED."namaAyah",
-          "namaIbu" = EXCLUDED."namaIbu",
-          "namaPanggilan" = EXCLUDED."namaPanggilan",
-          "punyaKTP" = EXCLUDED."punyaKTP",
-          "bantuan" = EXCLUDED."bantuan",
-          "alamat" = EXCLUDED."alamat",
-          "rt" = EXCLUDED."rt",
-          "rw" = EXCLUDED."rw",
-          "kelurahan" = EXCLUDED."kelurahan",
-          "kecamatan" = EXCLUDED."kecamatan",
-          "kabupaten" = EXCLUDED."kabupaten",
-          "provinsi" = EXCLUDED."provinsi",
-          "alamatLengkap" = EXCLUDED."alamatLengkap",
-          "keterangan" = EXCLUDED."keterangan",
-          "updatedAt" = NOW()
-      `;
-
-      try {
-        const result = await db.$executeRawUnsafe(sql, ...params);
-        // In PostgreSQL, the result is the count of affected rows
-        console.log(`[Import Penduduk] Batch ${batchStart / BATCH_SIZE + 1}: ${batch.length} rows processed`);
-        imported += batch.length; // We can't easily distinguish insert vs update in raw SQL
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Import Penduduk] Batch error:`, msg);
-        errors.push(`Batch ${batchStart / BATCH_SIZE + 1}: ${msg.substring(0, 200)}`);
-        // Fallback: try individual inserts for this batch
-        for (const r of batch) {
-          try {
-            await db.penduduk.upsert({
-              where: { nik: r.nik },
-              update: {
-                noKK: r.noKK, namaLengkap: r.namaLengkap, jenisKelamin: r.jenisKelamin,
-                statusKeluarga: r.statusKeluarga, tempatLahir: r.tempatLahir,
-                tanggalLahir: new Date(r.tanggalLahir), agama: r.agama, pendidikan: r.pendidikan,
-                pekerjaan: r.pekerjaan, statusPerkawinan: r.statusPerkawinan,
-                kewarganegaraan: r.kewarganegaraan, namaAyah: r.namaAyah, namaIbu: r.namaIbu,
-                namaPanggilan: r.namaPanggilan, punyaKTP: 'BELUM', bantuan: '[]',
-                alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
-                kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
-                kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
-                alamatLengkap: alamatDefault, keterangan: r.keterangan,
-              },
-              create: {
-                noKK: r.noKK, nik: r.nik, namaLengkap: r.namaLengkap,
-                jenisKelamin: r.jenisKelamin, statusKeluarga: r.statusKeluarga,
-                tempatLahir: r.tempatLahir, tanggalLahir: new Date(r.tanggalLahir),
-                agama: r.agama, pendidikan: r.pendidikan, pekerjaan: r.pekerjaan,
-                statusPerkawinan: r.statusPerkawinan, kewarganegaraan: r.kewarganegaraan,
-                namaAyah: r.namaAyah, namaIbu: r.namaIbu,
-                namaPanggilan: r.namaPanggilan, noHP: null, punyaKTP: 'BELUM',
-                bantuan: '[]', bpjs: null, desil: null,
-                alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
-                kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
-                kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
-                alamatLengkap: alamatDefault, keterangan: r.keterangan,
-              },
-            });
-            imported++;
-          } catch (e2: unknown) {
-            const msg2 = e2 instanceof Error ? e2.message : String(e2);
-            console.error(`[Import Penduduk] Fallback error row ${r.rowNum} (${r.namaLengkap}):`, msg2);
-            errors.push(`Baris ${r.rowNum}: ${r.namaLengkap} - ${msg2.substring(0, 150)}`);
-          }
-        }
-      }
+    for (let i = 0; i < allRecords.length; i += BATCH_SIZE) {
+      const batch = allRecords.slice(i, i + BATCH_SIZE);
+      await db.penduduk.createMany({
+        data: batch.map(r => ({
+          noKK: r[0], nik: r[1], namaLengkap: r[2], jenisKelamin: r[3],
+          statusKeluarga: r[4], tempatLahir: r[5], tanggalLahir: new Date(r[6]),
+          agama: r[7], pendidikan: r[8], pekerjaan: r[9], statusPerkawinan: r[10],
+          kewarganegaraan: r[11], namaAyah: r[12], namaIbu: r[13],
+          namaPanggilan: r[14], noHP: null, punyaKTP: 'BELUM', bantuan: '[]',
+          bpjs: null, desil: null,
+          alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
+          kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
+          kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
+          alamatLengkap: alamatDefault, keterangan: r[15],
+        })),
+        skipDuplicates: true,
+      });
+      totalInserted += batch.length;
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[Import Penduduk] RESULT: total=${imported}, skipped=${skipped}, dateFails=${dateParseFails}, errors=${errors.length}, time=${elapsed}s`);
+    console.log(`[Import] ${totalInserted} records in ${elapsed}s`);
 
     return NextResponse.json({
-      message: `Berhasil mengimpor ${imported} data penduduk dari file${skipped > 0 ? ` (${skipped} dilewati)` : ''}`,
-      imported,
+      message: `Berhasil mengimpor ${totalInserted} data penduduk dari file${skipped > 0 ? ` (${skipped} dilewati)` : ''}`,
+      imported: totalInserted,
       skipped,
       dateParseFails: dateParseFails > 0 ? dateParseFails : undefined,
       errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
