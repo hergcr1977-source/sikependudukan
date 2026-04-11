@@ -58,6 +58,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'NIK sudah terdaftar' }, { status: 400 });
     }
 
+    // Auto-inherit: jika bukan KK head, warisi keterangan dari KK head
+    let finalKeterangan = keterangan || null;
+    if (toUpperCase(statusKeluarga) !== 'KEPALA KELUARGA' && (!keterangan || keterangan.trim() === '')) {
+      const kkHead = await db.penduduk.findFirst({
+        where: { noKK, statusKeluarga: 'KEPALA KELUARGA' },
+      });
+      if (kkHead && kkHead.keterangan) {
+        finalKeterangan = kkHead.keterangan;
+      }
+    }
+
     const penduduk = await db.penduduk.create({
       data: {
         noKK,
@@ -79,7 +90,7 @@ export async function POST(request: NextRequest) {
         punyaKTP: punyaKTP || 'BELUM',
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs || null,
-        keterangan: keterangan || null,
+        keterangan: finalKeterangan,
       },
     });
 
@@ -135,6 +146,18 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: updateData,
     });
+
+    // Auto-propagate: jika edit KK head & keterangan berubah, update semua anggota
+    const isKKHead = penduduk.statusKeluarga === 'KEPALA KELUARGA';
+    if (isKKHead && data.keterangan !== undefined) {
+      await db.penduduk.updateMany({
+        where: {
+          noKK: penduduk.noKK,
+          id: { not: penduduk.id },
+        },
+        data: { keterangan: data.keterangan || null },
+      });
+    }
 
     return NextResponse.json(penduduk);
   } catch (error) {
