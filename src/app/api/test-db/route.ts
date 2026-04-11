@@ -4,8 +4,15 @@ import { db } from '@/lib/db';
 export const maxDuration = 30;
 
 export async function GET() {
+  const dbUrl = process.env.DATABASE_URL || 'NOT SET';
+  const dbUrlMasked = dbUrl.includes('@') 
+    ? dbUrl.substring(0, dbUrl.indexOf('://') + 3) + '***' + dbUrl.substring(dbUrl.lastIndexOf('@'))
+    : dbUrl.substring(0, 40);
+  
   const result: Record<string, any> = {
     timestamp: new Date().toISOString(),
+    databaseUrl: dbUrlMasked,
+    databaseUrlProtocol: dbUrl.split('://')[0] || 'unknown',
     steps: [],
     errors: [],
   };
