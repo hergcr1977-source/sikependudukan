@@ -29,6 +29,13 @@ model Penduduk {
   bantuan          String    @default("[]")
   bpjs             String?
   desil            String?
+  alamat           String    @default("KP. CEMPLANG")
+  rt               String    @default("001")
+  rw               String    @default("002")
+  kelurahan        String    @default("SUKAMAJU")
+  kecamatan        String    @default("CIBUNGBULANG")
+  kabupaten        String    @default("BOGOR")
+  provinsi         String    @default("JAWA BARAT")
   alamatLengkap    String?
   keterangan       String?
   createdAt        DateTime  @default(now())
@@ -57,6 +64,13 @@ model PendudukSementara {
   alamatAsal        String
   bantuan           String    @default("[]")
   bpjs              String?
+  alamat            String    @default("KP. CEMPLANG")
+  rt               String    @default("001")
+  rw               String    @default("002")
+  kelurahan         String    @default("SUKAMAJU")
+  kecamatan         String    @default("CIBUNGBULANG")
+  kabupaten         String    @default("BOGOR")
+  provinsi          String    @default("JAWA BARAT")
   alamatLengkap     String?
   tanggalMasuk      DateTime
   tanggalKeluar     DateTime?

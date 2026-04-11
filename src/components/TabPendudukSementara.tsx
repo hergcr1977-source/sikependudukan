@@ -36,7 +36,9 @@ import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_KETERANGAN_SEMENTARA,
   JENIS_KELAMIN, STATUS_PERKAWINAN, STATUS_KELUARGA,
-  BANTUAN_OPTIONS, BPJS_OPTIONS, ALAMAT_LENGKAP_DEFAULT,
+  BANTUAN_OPTIONS, BPJS_OPTIONS,
+  ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT,
+  KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT, generateAlamatLengkap,
 } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
 
@@ -63,6 +65,13 @@ interface PendudukSementara {
   bantuan: string;
   bpjs: string | null;
   alamatLengkap: string | null;
+  alamat: string;
+  rt: string;
+  rw: string;
+  kelurahan: string;
+  kecamatan: string;
+  kabupaten: string;
+  provinsi: string;
   tanggalMasuk: string;
   tanggalKeluar: string | null;
   keterangan: string | null;
@@ -95,7 +104,14 @@ const defaultFormData = {
   alamatAsal: '',
   bantuan: [] as string[],
   bpjs: '',
-  alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
+  alamat: ALAMAT_DEFAULT,
+  rt: RT_DEFAULT,
+  rw: RW_DEFAULT,
+  kelurahan: KELURAHAN_DEFAULT,
+  kecamatan: KECAMATAN_DEFAULT,
+  kabupaten: KABUPATEN_DEFAULT,
+  provinsi: PROVINSI_DEFAULT,
+  alamatLengkap: generateAlamatLengkap(),
   tanggalMasuk: '',
   tanggalKeluar: '',
   keterangan: '',
@@ -192,7 +208,14 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       alamatAsal: p.alamatAsal,
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
-      alamatLengkap: p.alamatLengkap || ALAMAT_LENGKAP_DEFAULT,
+      alamatLengkap: p.alamatLengkap || generateAlamatLengkap(p),
+      alamat: p.alamat || ALAMAT_DEFAULT,
+      rt: p.rt || RT_DEFAULT,
+      rw: p.rw || RW_DEFAULT,
+      kelurahan: p.kelurahan || KELURAHAN_DEFAULT,
+      kecamatan: p.kecamatan || KECAMATAN_DEFAULT,
+      kabupaten: p.kabupaten || KABUPATEN_DEFAULT,
+      provinsi: p.provinsi || PROVINSI_DEFAULT,
       tanggalMasuk: p.tanggalMasuk.split('T')[0],
       tanggalKeluar: p.tanggalKeluar ? p.tanggalKeluar.split('T')[0] : '',
       keterangan: p.keterangan || '',
@@ -272,7 +295,14 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
   };
 
   const updateField = (field: string, value: string | string[]) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
+      if (addrFields.includes(field)) {
+        next.alamatLengkap = generateAlamatLengkap(next);
+      }
+      return next;
+    });
   };
 
   const toggleBantuan = (item: string) => {
@@ -553,9 +583,44 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
               <Input className="text-sm uppercase" value={formData.alamatAsal} onChange={e => updateField('alamatAsal', e.target.value.toUpperCase())} />
             </div>
 
+            {/* Alamat Lengkap - Input Terpisah */}
             <div className="space-y-1">
-              <Label className="text-xs">Alamat Lengkap</Label>
-              <Input className="text-sm uppercase" value={formData.alamatLengkap} onChange={e => updateField('alamatLengkap', e.target.value.toUpperCase())} />
+              <Label className="text-xs font-semibold text-emerald-700">Alamat Lengkap</Label>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Alamat</Label>
+              <Input className="text-sm uppercase" value={formData.alamat} onChange={e => updateField('alamat', e.target.value.toUpperCase())} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">RT</Label>
+                <Input className="text-sm uppercase" value={formData.rt} onChange={e => updateField('rt', e.target.value.toUpperCase())} maxLength={3} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">RW</Label>
+                <Input className="text-sm uppercase" value={formData.rw} onChange={e => updateField('rw', e.target.value.toUpperCase())} maxLength={3} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kelurahan/Desa</Label>
+                <Input className="text-sm uppercase" value={formData.kelurahan} onChange={e => updateField('kelurahan', e.target.value.toUpperCase())} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Kecamatan</Label>
+                <Input className="text-sm uppercase" value={formData.kecamatan} onChange={e => updateField('kecamatan', e.target.value.toUpperCase())} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kabupaten/Kota</Label>
+                <Input className="text-sm uppercase" value={formData.kabupaten} onChange={e => updateField('kabupaten', e.target.value.toUpperCase())} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Provinsi</Label>
+                <Input className="text-sm uppercase" value={formData.provinsi} onChange={e => updateField('provinsi', e.target.value.toUpperCase())} />
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded p-2">
+              <p className="text-[10px] text-muted-foreground">Preview: <span className="font-medium">{formData.alamatLengkap}</span></p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

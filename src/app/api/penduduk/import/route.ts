@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK } from '@/lib/utils-kependudukan';
-import { ALAMAT_LENGKAP_DEFAULT } from '@/lib/constants';
+import { ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
@@ -13,12 +13,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
     }
 
-    // Pastikan kolom alamatLengkap ada di database
+    // Pastikan kolom alamatLengkap dan alamat individual ada di database
     try {
       const cols = await db.$queryRawUnsafe('PRAGMA table_info(Penduduk)');
       const colNames = (cols as Array<{ name: string }>).map(c => c.name);
       if (!colNames.includes('alamatLengkap')) {
         await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN alamatLengkap TEXT;');
+      }
+      for (const [col, def] of [['alamat', "'KP. CEMPLANG'"], ['rt', "'001'"], ['rw', "'002'"], ['kelurahan', "'SUKAMAJU'"], ['kecamatan', "'CIBUNGBULANG'"], ['kabupaten', "'BOGOR'"], ['provinsi', "'JAWA BARAT'"]] as [string, string][]) {
+        if (!colNames.includes(col)) {
+          await db.$executeRawUnsafe(`ALTER TABLE Penduduk ADD COLUMN ${col} TEXT DEFAULT ${def};`);
+        }
       }
     } catch { /* abaikan jika gagal */ }
 
@@ -174,6 +179,13 @@ export async function POST(request: NextRequest) {
         punyaKTP: 'BELUM',
         bantuan: '[]',
         bpjs: bpjs ? bpjs.toUpperCase() : null,
+        alamat: ALAMAT_DEFAULT,
+        rt: RT_DEFAULT,
+        rw: RW_DEFAULT,
+        kelurahan: KELURAHAN_DEFAULT,
+        kecamatan: KECAMATAN_DEFAULT,
+        kabupaten: KABUPATEN_DEFAULT,
+        provinsi: PROVINSI_DEFAULT,
         alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
       });
     }
