@@ -89,10 +89,34 @@ function detectColumns(headerRow: any[]): Record<string, number> {
   return cols;
 }
 
-// ========== SQL ESCAPE ==========
+// ========== SQL ESCAPE (PostgreSQL-safe) ==========
 function esc(val: string | null | undefined): string {
   if (val === null || val === undefined) return 'NULL';
   return "'" + String(val).replace(/'/g, "''") + "'";
+}
+
+async function getDbColumns(tableName: string): Promise<string[]> {
+  try {
+    const cols = await db.$queryRawUnsafe(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = lower('${tableName}') ORDER BY ordinal_position`
+    );
+    return (cols as Array<{ column_name: string }>).map(c => c.column_name);
+  } catch (e) {
+    console.error(`[getDbColumns] Failed for ${tableName}:`, e);
+    return [];
+  }
+}
+
+async function addMissingColumn(table: string, col: string, def: string): Promise<boolean> {
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${col}" TEXT${def ? ` DEFAULT ${esc(def)}` : ''};`
+    );
+    return true;
+  } catch (e) {
+    console.warn(`[addMissingColumn] Failed ${table}.${col}:`, e);
+    return false;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -101,15 +125,12 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
 
-    // ===== STEP 1: Get actual columns from DB =====
-    let dbColumns: string[] = [];
-    try {
-      const cols = await db.$queryRawUnsafe('PRAGMA table_info(PendudukSementara)');
-      dbColumns = (cols as Array<{ name: string }>).map(c => c.name);
-      console.log(`[Import Sementara] DB columns: ${dbColumns.join(', ')}`);
-    } catch (e) {
-      console.error('[Import Sementara] Cannot read DB columns:', e);
-      return NextResponse.json({ error: 'Gagal membaca struktur database: ' + String(e) }, { status: 500 });
+    // ===== STEP 1: Get actual columns from DB (PostgreSQL) =====
+    let dbColumns = await getDbColumns('PendudukSementara');
+    console.log(`[Import Sementara] DB columns (${dbColumns.length}): ${dbColumns.join(', ')}`);
+
+    if (dbColumns.length === 0) {
+      return NextResponse.json({ error: 'Gagal membaca struktur tabel PendudukSementara di database' }, { status: 500 });
     }
 
     // ===== STEP 2: Auto-migrate missing columns =====
@@ -124,14 +145,8 @@ export async function POST(request: NextRequest) {
 
     for (const [col, def] of Object.entries(requiredColumns)) {
       if (!dbColumns.includes(col)) {
-        try {
-          const sql = `ALTER TABLE PendudukSementara ADD COLUMN ${col} TEXT${def ? ` DEFAULT '${def}'` : ''};`;
-          console.log(`[Import Sementara] Migrating column: ${col}`);
-          await db.$executeRawUnsafe(sql);
-          dbColumns.push(col);
-        } catch (migErr) {
-          console.warn(`[Import Sementara] Migration failed for ${col}:`, migErr);
-        }
+        const ok = await addMissingColumn('PendudukSementara', col, def);
+        if (ok) dbColumns.push(col);
       }
     }
 
@@ -217,13 +232,13 @@ export async function POST(request: NextRequest) {
       existingNIKs.add(nik);
       const statusKeterangan = normalizeStatus(statusWarga);
 
-      // Build dynamic INSERT using only columns that exist in DB
+      // Build dynamic INSERT using only columns that exist in DB (PostgreSQL)
       const insertCols: string[] = [];
       const insertValues: string[] = [];
 
       function addCol(colName: string, val: string) {
         if (dbColumns.includes(colName)) {
-          insertCols.push(colName);
+          insertCols.push(`"${colName}"`);
           insertValues.push(val);
         }
       }
@@ -264,14 +279,14 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const sql = `INSERT INTO PendudukSementara (${insertCols.join(', ')}) VALUES (${insertValues.join(', ')});`;
+      const sql = `INSERT INTO "PendudukSementara" (${insertCols.join(', ')}) VALUES (${insertValues.join(', ')});`;
 
       try {
         await db.$executeRawUnsafe(sql);
         imported++;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Import Sementara] SQL Error row ${i + 1} (${namaLengkap}):`, msg, '\nSQL:', sql.substring(0, 200));
+        console.error(`[Import Sementara] SQL Error row ${i + 1} (${namaLengkap}):`, msg, '\nSQL:', sql.substring(0, 300));
         errors.push(`Baris ${i + 1}: ${namaLengkap} - ${msg.substring(0, 100)}`);
       }
     }
@@ -283,7 +298,7 @@ export async function POST(request: NextRequest) {
       imported,
       skipped,
       dateParseFails: dateParseFails > 0 ? dateParseFails : undefined,
-      dbColumns: dbColumns,
+      dbColumns,
       errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
     });
   } catch (error) {
