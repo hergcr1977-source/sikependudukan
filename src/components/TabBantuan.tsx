@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,14 +25,11 @@ import {
   Search,
   Shield,
   ExternalLink,
-  Copy,
-  Users,
   Pencil,
   Download,
   ChevronDown,
   ChevronRight,
   CheckCheck,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BANTUAN_OPTIONS, BPJS_OPTIONS, DESIL_OPTIONS } from '@/lib/constants';
@@ -121,6 +118,11 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     }
     setKKGroups(Array.from(map.values()));
   };
+
+  // Auto-migrate: pastikan kolom desil ada di database
+  useEffect(() => {
+    fetch('/api/setup-db').catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchPenduduk();

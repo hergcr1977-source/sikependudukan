@@ -129,3 +129,27 @@ Stage Summary:
 - Date format MM/DD/YY parsed correctly (e.g., "10/10/81" → 1981-10-10)
 - Status normalization handles KONTRAN, NUMPANG KELUARGA, KOS, SEWA, KONTRAK
 - Bantuan badges now only display for Kepala Keluarga in penduduk list
+
+---
+Task ID: 6
+Agent: main
+Task: Upgrade Tab Bansos dengan semua fitur lengkap
+
+Work Log:
+- Mencari Tab Bantuan/Bansos di seluruh filesystem (sikependudukan-baru, sikependudukan-offline, /tmp, git history, branch master)
+- Konfirmasi: Tab Bantuan/Bansos TIDAK PERNAH ADA sebelumnya di project ini
+- Menulis ulang TabBantuan.tsx dengan semua fitur lengkap:
+  - Section 1: Cek Bansos (panduan langkah-langkah + link ke cekbansos.kemensos.go.id + quick search)
+  - Section 2: Daftar Penerima (view kartu/tabel, filter bantuan & BPJS, lihat per KK, detail dialog, export CSV)
+  - Section 3: Rekap (statistik bantuan & BPJS, progress bar, daftar KK penerima)
+  - Section 4: BPJS (daftar pengguna BPJS dengan filter)
+  - Update dialog (checkbox bantuan + select BPJS + auto-propagate ke anggota KK)
+  - Detail dialog (info lengkap penduduk + bantuan + BPJS)
+- Fix import error: ScrollArea from wrong module
+- TypeScript check: 0 errors on TabBantuan.tsx
+- Push ke GitHub: commit cf72173
+
+Stage Summary:
+- Tab Bansos di-upgrade dengan 4 section: Cek, Daftar, Rekap, BPJS
+- Fitur: search, filter bantuan/BPJS, view kartu/tabel, lihat per KK, detail, export CSV, auto-propagate KK
+- Deployed ke Vercel via auto-deploy dari GitHub push
