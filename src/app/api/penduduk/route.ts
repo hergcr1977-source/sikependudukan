@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       noKK, nik, namaLengkap, jenisKelamin, statusKeluarga,
       tempatLahir, tanggalLahir, agama, pendidikan, pekerjaan,
       statusPerkawinan, kewarganegaraan, namaAyah, namaIbu,
-      namaPanggilan, noHP, punyaKTP, bantuan, bpjs, keterangan,
+      namaPanggilan, noHP, punyaKTP, bantuan, bpjs, desil, keterangan,
     } = body;
 
     if (!validateNoKK(noKK)) {
@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
         punyaKTP: punyaKTP || 'BELUM',
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs || null,
+        desil: desil || null,
         keterangan: finalKeterangan,
       },
     });
@@ -140,6 +141,7 @@ export async function PUT(request: NextRequest) {
     if (data.punyaKTP !== undefined) updateData.punyaKTP = data.punyaKTP;
     if (data.bantuan !== undefined) updateData.bantuan = JSON.stringify(data.bantuan);
     if (data.bpjs !== undefined) updateData.bpjs = data.bpjs || null;
+    if (data.desil !== undefined) updateData.desil = data.desil || null;
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
     const penduduk = await db.penduduk.update({

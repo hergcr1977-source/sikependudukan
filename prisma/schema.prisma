@@ -28,6 +28,7 @@ model Penduduk {
   punyaKTP         String    @default("BELUM")
   bantuan          String    @default("[]")
   bpjs             String?
+  desil            String?
   keterangan       String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

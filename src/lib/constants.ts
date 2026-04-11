@@ -62,6 +62,8 @@ export const BANTUAN_OPTIONS = ['TIDAK', 'PKH', 'BPNT', 'BLT', 'LAINNYA'] as con
 
 export const BPJS_OPTIONS = ['TIDAK', 'PBI', 'MANDIRI', 'KETENAGAKERJAAN', 'JKN-KP'] as const;
 
+export const DESIL_OPTIONS = ['DESIL 1', 'DESIL 2', 'DESIL 3', 'DESIL 4', 'DESIL 5', 'DESIL 6-10'] as const;
+
 export const STATUS_KTP = ['PUNYA', 'BELUM', 'RUSAK', 'HILANG'] as const;
 
 export const JENIS_KEJADIAN = ['LAHIR', 'MATI', 'PINDAH', 'DATANG'] as const;
