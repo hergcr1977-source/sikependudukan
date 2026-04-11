@@ -485,8 +485,12 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       const res = await fetch('/api/penduduk/import', { method: 'POST', body: formDataImport });
       if (res.ok) {
         const data = await res.json();
-        toast.success(`${data.message}${data.errors?.length ? ` (${data.errors.length} error)` : ''}`);
-        if (data.errors) {
+        toast.success(data.message);
+        if (data.skipped > 0) {
+          toast.info(`${data.skipped} data dilewati (duplikat atau tidak valid)`);
+        }
+        if (data.errors?.length > 0) {
+          toast.warning(`${data.errors.length} data gagal disimpan`);
           console.warn('Import errors:', data.errors);
         }
         fetchPenduduk();

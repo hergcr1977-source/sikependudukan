@@ -38,32 +38,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File kosong atau tidak memiliki cukup data' }, { status: 400 });
     }
 
-    // Pre-fetch semua NIK yang sudah ada
+    // Pre-fetch semua NIK yang sudah ada di penduduk sementara
     const existingNIKs = new Set(
       (await db.pendudukSementara.findMany({ select: { nik: true } })).map(p => p.nik)
     );
 
-    // Pre-fetch juga NIK dari tabel penduduk utama untuk cek duplikat lintas tabel
+    // Pre-fetch NIK dari tabel penduduk utama untuk cek duplikat
     const existingPendudukNIKs = new Set(
       (await db.penduduk.findMany({ select: { nik: true } })).map(p => p.nik)
     );
 
+    let imported = 0;
+    let skipped = 0;
     let errors: string[] = [];
+    let currentNoKK = '';
+    const today = new Date().toISOString().split('T')[0];
 
-    // Normalize status keterangan - lebih fleksibel, default ke NUMPANG KELUARGA jika tidak dikenali
+    // Normalize status keterangan - default ke NUMPANG KELUARGA jika tidak dikenali
     const normalizeStatus = (raw: string): string => {
       const upper = raw.toUpperCase().trim();
-      if (!upper) return 'NUMPANG KELUARGA'; // Default jika kosong
+      if (!upper) return 'NUMPANG KELUARGA';
       if (upper.includes('KONTRAK') || upper.includes('KONTRAN')) return 'KONTRAK';
       if (upper.includes('SEWA')) return 'SEWA';
       if (upper.includes('MENUMPANG') || upper.includes('NUMPANG')) return 'NUMPANG KELUARGA';
       if (upper.includes('KOS') || upper.includes('KOST')) return 'KOS';
-      // Jika tidak dikenali, gunakan default
       return 'NUMPANG KELUARGA';
     };
-
-    let currentNoKK = '';
-    const today = new Date().toISOString().split('T')[0];
 
     // Skip header rows: rows[0] = header, rows[1] = sub-header
     for (let i = 2; i < rows.length; i++) {
@@ -99,29 +99,22 @@ export async function POST(request: NextRequest) {
         currentNoKK = noKKRaw;
       }
 
-      if (!currentNoKK) {
-        errors.push(`Baris ${i + 1}: No. KK tidak ditemukan - ${namaLengkap}`);
-        continue;
-      }
-
-      if (!nik) {
-        errors.push(`Baris ${i + 1}: NIK kosong - ${namaLengkap}`);
-        continue;
+      if (!currentNoKK || !nik) {
+        continue; // Skip tanpa error
       }
 
       // Cek duplikat NIK dari penduduk sementara
       if (existingNIKs.has(nik)) {
-        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada di penduduk sementara (${namaLengkap})`);
+        skipped++;
         continue;
       }
 
       // Cek duplikat NIK dari penduduk utama
       if (existingPendudukNIKs.has(nik)) {
-        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada di data penduduk utama (${namaLengkap})`);
+        skipped++;
         continue;
       }
 
-      // Status keterangan - default ke NUMPANG KELUARGA jika kosong/tidak dikenali
       const statusKeterangan = normalizeStatus(statusWarga);
 
       // Parse tanggal lahir
@@ -153,7 +146,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (!tanggalLahirStr) {
-        errors.push(`Baris ${i + 1}: Tanggal lahir tidak valid (${tanggalLahirRaw}) - ${namaLengkap}`);
+        skipped++;
         continue;
       }
 
@@ -197,18 +190,17 @@ export async function POST(request: NextRequest) {
             keterangan: keterangan || null,
           },
         });
+        imported++;
       } catch (insertError) {
         console.error(`Insert error row ${i + 1} (${namaLengkap}):`, insertError);
-        errors.push(`Baris ${i + 1}: Gagal menyimpan ${namaLengkap} - ${String(insertError)}`);
+        errors.push(`Baris ${i + 1}: Gagal menyimpan ${namaLengkap}`);
       }
     }
 
-    // Hitung jumlah yang berhasil
-    const imported = await db.pendudukSementara.count();
-
     return NextResponse.json({
-      message: `Berhasil mengimpor data penduduk sementara. Total: ${imported} data`,
+      message: `Berhasil mengimpor ${imported} data penduduk sementara${skipped > 0 ? `, ${skipped} dilewati` : ''}`,
       imported,
+      skipped,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

@@ -283,8 +283,14 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       const res = await fetch('/api/penduduk-sementara/import', { method: 'POST', body: form });
       if (res.ok) {
         const result = await res.json();
-        toast.success(`${result.message}${result.errors?.length ? ` (${result.errors.length} error)` : ''}`);
-        if (result.errors) console.warn('Import errors:', result.errors);
+        toast.success(result.message);
+        if (result.skipped > 0) {
+          toast.info(`${result.skipped} data dilewati (duplikat atau tidak valid)`);
+        }
+        if (result.errors?.length > 0) {
+          toast.warning(`${result.errors.length} data gagal disimpan`);
+          console.warn('Import errors:', result.errors);
+        }
         fetchData();
         setShowImport(false);
       } else {
