@@ -8,12 +8,23 @@ function createPrismaClient() {
   const dbUrl = process.env.DATABASE_URL || "file:./prisma/dev.db"
 
   if (dbUrl.startsWith('libsql://') || dbUrl.startsWith('https://')) {
-    // Use libsql adapter for Turso/remote databases
-    const { PrismaLibSQL } = require('@prisma/adapter-libsql')
-    const { createClient } = require('@libsql/client')
-    const libsql = createClient({ url: dbUrl })
-    const adapter = new PrismaLibSQL(libsql)
-    return new PrismaClient({ adapter })
+    // For Turso/libSQL URLs, use the adapter
+    let PrismaLibSQL: any, createClient: any
+    try {
+      const adapterModule = require('@prisma/adapter-libsql')
+      const libsqlModule = require('@libsql/client')
+      PrismaLibSQL = adapterModule.PrismaLibSQL || adapterModule.PrismaLibSql
+      createClient = libsqlModule.createClient
+    } catch {
+      // If adapter packages not installed, fall through to datasourceUrl override
+      console.warn('[db] libsql adapter not available, using datasourceUrl override')
+    }
+
+    if (PrismaLibSQL && createClient) {
+      const libsql = createClient({ url: dbUrl })
+      const adapter = new PrismaLibSQL(libsql)
+      return new PrismaClient({ adapter })
+    }
   }
 
   return new PrismaClient()
