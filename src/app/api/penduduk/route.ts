@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(penduduk);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: 'Gagal mengambil data penduduk' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Gagal mengambil data penduduk', detail: msg }, { status: 500 });
   }
 }
 
