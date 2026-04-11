@@ -4,25 +4,15 @@ import { toUpperCase } from '@/lib/utils-kependudukan';
 import { ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
-// Cari index kolom berdasarkan nama header
-function findColIndex(headers: string[], keywords: string[]): number {
-  const headerStr = headers.map(h => toUpperCase(String(h).trim()));
-  for (const kw of keywords) {
-    const idx = headerStr.findIndex(h => h.includes(toUpperCase(kw)));
-    if (idx >= 0) return idx;
-  }
-  return -1;
-}
-
-function parseTanggal(raw: string): string | null {
+function parseTanggal(raw: string | null | undefined): string | null {
   if (!raw) return null;
   raw = String(raw).trim();
   if (!raw) return null;
 
-  // Format: YYYY-MM-DD (dari cellDates)
+  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.split(' ')[0];
 
-  // Format: MM/DD/YY atau MM/DD/YYYY
+  // MM/DD/YY atau MM/DD/YYYY
   if (raw.includes('/')) {
     const parts = raw.split('/');
     if (parts.length === 3) {
@@ -46,8 +36,35 @@ function parseTanggal(raw: string): string | null {
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   }
 
+  // DD-MM-YYYY
+  if (raw.includes('-')) {
+    return raw.split(' ')[0];
+  }
+
   return null;
 }
+
+// Hardcoded column index berdasarkan format Excel standar
+// Baris 0: header utama, Baris 1: sub-header (Ayah/Ibu)
+// Data mulai baris 2
+const COL = {
+  NO_KK: 0,
+  NAMA: 1,
+  NIK: 2,
+  JK: 3,
+  STATUS_KK: 4,
+  TEMPAT: 5,
+  TGL_LAHIR: 6,
+  AGAMA: 7,
+  PENDIDIKAN: 8,
+  PEKERJAAN: 9,
+  STATUS_KAWIN: 10,
+  WARGANEGARAAN: 11,
+  AYAH: 12,
+  IBU: 13,
+  PANGGILAN: 14,
+  KETERANGAN: 15,
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,39 +100,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File kosong atau tidak memiliki cukup data' }, { status: 400 });
     }
 
-    // Auto-detect kolom dari header baris 0
-    const header0: string[] = (rows[0] || []).map(c => String(c || '').trim());
-    const header1: string[] = (rows[1] || []).map(c => String(c || '').trim());
-
-    // Gunakan header baris 0 untuk deteksi kolom, fallback ke header baris 1
-    const headerForDetect = header0.length > 2 ? header0 : header1;
-
-    // Cari index kolom
-    let COL_NO_KK = findColIndex(headerForDetect, ['NO. KK', 'NO KK', 'NOMOR KK', 'NO_KK', 'NoKK']);
-    let COL_NAMA = findColIndex(headerForDetect, ['NAMA LENGKAP', 'NAMA', 'NAME']);
-    let COL_NIK = findColIndex(headerForDetect, ['NIK', 'NO. INDUK']);
-    let COL_JK = findColIndex(headerForDetect, ['JENIS KELAMIN', 'J. KELAMIN', 'LAKI', 'PEREMPUAN', 'JK', 'JenisKelamin']);
-    let COL_STATUS = findColIndex(headerForDetect, ['STATUS KELUARGA', 'STATUS', 'HUB. KELUARGA', 'HubKeluarga']);
-    let COL_TEMPAT = findColIndex(headerForDetect, ['TEMPAT LAHIR', 'TMP LAHIR']);
-    let COL_TGL = findColIndex(headerForDetect, ['TANGGAL LAHIR', 'TGL LAHIR', 'TTL']);
-
-    // Jika auto-detect gagal, gunakan index default
-    if (COL_NO_KK < 0 || COL_NAMA < 0 || COL_NIK < 0) {
-      // Fallback: coba pola lama (data mulai dari Col B = index 0)
-      COL_NO_KK = 0; COL_NAMA = 1; COL_NIK = 2; COL_JK = 3; COL_STATUS = 4; COL_TEMPAT = 5; COL_TGL = 6;
-    }
-
-    // Log kolom yang terdeteksi
-    console.log(`[Import Penduduk] Kolom terdeteksi: NoKK=${COL_NO_KK}, Nama=${COL_NAMA}, NIK=${COL_NIK}, JK=${COL_JK}, Status=${COL_STATUS}, Tempat=${COL_TEMPAT}, Tgl=${COL_TGL}`);
-
-    // Cek: apakah ada kolom "NO" (nomor urut) sebelum kolom yang terdeteksi?
-    const firstHeaderVal = headerForDetect[0] || '';
-    if (/^(NO|NO\.$|NOMOR|URUT)$/i.test(firstHeaderVal)) {
-      // Ada kolom NO di posisi 0, shift semua +1
-      if (COL_NO_KK === 0) COL_NO_KK = findColIndex(headerForDetect, ['NO. KK', 'NO KK', 'NOMOR KK']) ?? 1;
-      console.log(`[Import Penduduk] Terdeteksi kolom NO di index 0, kolom di-shift`);
-    }
-
     // Pre-fetch NIK yang sudah ada
     const existingNIKs = new Set(
       (await db.penduduk.findMany({ select: { nik: true } })).map(p => p.nik)
@@ -126,64 +110,92 @@ export async function POST(request: NextRequest) {
     let currentNoKK = '';
     const errors: string[] = [];
 
-    // Mulai dari baris ke-2 (setelah header)
-    const startRow = header0.length > 2 ? 2 : (header1.length > 2 ? 3 : 2);
-
-    for (let i = startRow; i < rows.length; i++) {
+    // Data mulai baris 2 (setelah header dan sub-header)
+    for (let i = 2; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length < 3) continue;
 
-      const getCol = (idx: number) => String(row[idx] || '').trim();
+      const get = (idx: number) => String(row[idx] || '').trim();
 
-      const noKKRaw = getCol(COL_NO_KK);
-      const namaLengkap = getCol(COL_NAMA);
-      const nik = getCol(COL_NIK);
-      const jenisKelamin = COL_JK >= 0 ? getCol(COL_JK) : '';
-      const statusKeluarga = COL_STATUS >= 0 ? getCol(COL_STATUS) : 'KEPALA KELUARGA';
-      const tempatLahir = COL_TEMPAT >= 0 ? getCol(COL_TEMPAT) : '';
-      const tanggalLahirRaw = COL_TGL >= 0 ? getCol(COL_TGL) : '';
+      const noKKRaw = get(COL.NO_KK);
+      const namaLengkap = get(COL.NAMA);
+      const nik = get(COL.NIK);
+      const jenisKelamin = get(COL.JK);
+      const statusKeluarga = get(COL.STATUS_KK);
+      const tempatLahir = get(COL.TEMPAT);
+      const tanggalLahirRaw = get(COL.TGL_LAHIR);
+      const agama = get(COL.AGAMA);
+      const pendidikan = get(COL.PENDIDIKAN);
+      const pekerjaan = get(COL.PEKERJAAN);
+      const statusPerkawinan = get(COL.STATUS_KAWIN);
+      const kewarganegaraan = get(COL.WARGANEGARAAN) || 'WNI';
+      const namaAyah = get(COL.AYAH);
+      const namaIbu = get(COL.IBU);
+      const namaPanggilan = get(COL.PANGGILAN);
+      const keterangan = get(COL.KETERANGAN);
 
+      // Skip baris kosong
       if (!namaLengkap) continue;
-      if (!nik && !jenisKelamin && !tempatLahir) continue;
 
+      // Skip baris yang bukan data (hanya kewarganegaraan saja)
+      if (!nik && !jenisKelamin && !tempatLahir && !statusKeluarga) continue;
+
+      // Track No KK
       if (noKKRaw) currentNoKK = noKKRaw;
-      if (!currentNoKK || !nik) { skipped++; continue; }
-      if (nik.length !== 16 || !/^\d{16}$/.test(nik)) { skipped++; continue; }
+
+      // Validasi dasar
+      if (!currentNoKK) { skipped++; continue; }
+      if (!nik) { skipped++; continue; }
+
+      // Cek duplikat
       if (existingNIKs.has(nik)) { skipped++; continue; }
 
+      // Parse tanggal
       const tanggalLahir = parseTanggal(tanggalLahirRaw);
       if (!tanggalLahir) { skipped++; continue; }
 
+      // Tandai NIK sudah diproses
       existingNIKs.add(nik);
 
-      // Ambil field opsional dari kolom yang tersedia
-      const agama = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 1 : 7));
-      const pendidikan = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 2 : 8));
-      const pekerjaan = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 3 : 9));
-      const statusPerkawinan = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 4 : 10));
-      const kewarganegaraan = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 5 : 11) || 'WNI');
-      const namaAyah = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 6 : 12));
-      const namaIbu = toUpperCase(getCol(COL_TGL >= 0 ? COL_TGL + 7 : 13));
-      const namaPanggilan = getCol(COL_TGL >= 0 ? COL_TGL + 8 : 14);
-      const keterangan = getCol(COL_TGL >= 0 ? COL_TGL + 9 : 15);
-      const bpjs = getCol(COL_TGL >= 0 ? COL_TGL + 10 : 16);
-
+      // Insert menggunakan Prisma
       try {
-        await db.$executeRawUnsafe(
-          `INSERT INTO Penduduk (noKK, nik, namaLengkap, jenisKelamin, statusKeluarga, tempatLahir, tanggalLahir, agama, pendidikan, pekerjaan, statusPerkawinan, kewarganegaraan, namaAyah, namaIbu, namaPanggilan, noHP, punyaKTP, bantuan, bpjs, alamat, rt, rw, kelurahan, kecamatan, kabupaten, provinsi, alamatLengkap, keterangan, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'BELUM', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-          currentNoKK, nik, toUpperCase(namaLengkap), toUpperCase(jenisKelamin), toUpperCase(statusKeluarga),
-          toUpperCase(tempatLahir), tanggalLahir, agama, pendidikan, pekerjaan, statusPerkawinan,
-          kewarganegaraan, namaAyah, namaIbu, namaPanggilan ? toUpperCase(namaPanggilan) : null,
-          bpjs ? toUpperCase(bpjs) : null,
-          ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
-          ALAMAT_LENGKAP_DEFAULT,
-          keterangan || null
-        );
+        await db.penduduk.create({
+          data: {
+            noKK: currentNoKK,
+            nik: nik,
+            namaLengkap: toUpperCase(namaLengkap),
+            jenisKelamin: toUpperCase(jenisKelamin),
+            statusKeluarga: toUpperCase(statusKeluarga) || 'KEPALA KELUARGA',
+            tempatLahir: toUpperCase(tempatLahir),
+            tanggalLahir: new Date(tanggalLahir),
+            agama: toUpperCase(agama),
+            pendidikan: toUpperCase(pendidikan),
+            pekerjaan: toUpperCase(pekerjaan),
+            statusPerkawinan: toUpperCase(statusPerkawinan),
+            kewarganegaraan: toUpperCase(kewarganegaraan),
+            namaAyah: toUpperCase(namaAyah),
+            namaIbu: toUpperCase(namaIbu),
+            namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
+            noHP: null,
+            punyaKTP: 'BELUM',
+            bantuan: '[]',
+            bpjs: null,
+            alamat: ALAMAT_DEFAULT,
+            rt: RT_DEFAULT,
+            rw: RW_DEFAULT,
+            kelurahan: KELURAHAN_DEFAULT,
+            kecamatan: KECAMATAN_DEFAULT,
+            kabupaten: KABUPATEN_DEFAULT,
+            provinsi: PROVINSI_DEFAULT,
+            alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
+            keterangan: keterangan || null,
+          },
+        });
         imported++;
-      } catch (err) {
-        console.error(`Insert error row ${i + 1} (${namaLengkap}):`, err);
-        errors.push(`Baris ${i + 1}: ${namaLengkap}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[Import Penduduk] Error baris ${i + 1} (${namaLengkap}):`, msg);
+        errors.push(`Baris ${i + 1}: ${namaLengkap} - ${msg.substring(0, 80)}`);
       }
     }
 
@@ -191,11 +203,10 @@ export async function POST(request: NextRequest) {
       message: `Berhasil mengimpor ${imported} data penduduk${skipped > 0 ? `, ${skipped} dilewati` : ''}`,
       imported,
       skipped,
-      kolomTerdeteksi: { NoKK: COL_NO_KK, Nama: COL_NAMA, NIK: COL_NIK, JK: COL_JK },
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error('Import error:', error);
+    console.error('[Import Penduduk] Fatal error:', error);
     return NextResponse.json({ error: 'Gagal mengimpor: ' + String(error) }, { status: 500 });
   }
 }
