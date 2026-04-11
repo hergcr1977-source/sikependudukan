@@ -25,12 +25,11 @@ import {
   Search,
   Shield,
   ExternalLink,
-  RefreshCw,
   CheckCircle,
-  XCircle,
-  AlertTriangle,
   Copy,
   Users,
+  Pencil,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BANTUAN_OPTIONS } from '@/lib/constants';
@@ -60,37 +59,6 @@ interface Penduduk {
   keterangan: string | null;
 }
 
-interface BansosCheck {
-  loading: boolean;
-  success: boolean;
-  data: {
-    nama: string;
-    nik: string;
-    noKK: string;
-    kota: string;
-    kecamatan: string;
-    kelurahan: string;
-    alamat: string;
-    programBansos: {
-      namaProgram: string;
-      periode: string;
-      status: string;
-      nominal: number;
-    }[];
-    status: string;
-  } | null;
-  error: string | null;
-  source: string;
-}
-
-const defaultBansosCheck: BansosCheck = {
-  loading: false,
-  success: false,
-  data: null,
-  error: null,
-  source: '',
-};
-
 interface TabBantuanProps {
   isAdmin?: boolean;
 }
@@ -101,10 +69,6 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<'cek' | 'daftar' | 'rekap'>('daftar');
   const [filterBantuan, setFilterBantuan] = useState('');
-
-  // Cek Bansos
-  const [cekNik, setCekNik] = useState('');
-  const [bansosResult, setBansosResult] = useState<BansosCheck>(defaultBansosCheck);
 
   // Update Bantuan Dialog
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
@@ -132,53 +96,6 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     fetchPenduduk();
   }, [fetchPenduduk]);
 
-  const handleCekBansos = async () => {
-    if (!cekNik || cekNik.length !== 16) {
-      toast.error('Masukkan NIK 16 digit');
-      return;
-    }
-
-    setBansosResult({ ...defaultBansosCheck, loading: true });
-
-    try {
-      const res = await fetch('/api/cekbansos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nik: cekNik }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setBansosResult({
-          loading: false,
-          success: true,
-          data: data.data,
-          error: null,
-          source: data.source,
-        });
-        toast.success('Data bansos ditemukan');
-      } else {
-        setBansosResult({
-          loading: false,
-          success: false,
-          data: null,
-          error: data.error || 'Data tidak ditemukan',
-          source: data.source,
-        });
-        toast.warning(data.error || 'Data bansos tidak ditemukan');
-      }
-    } catch {
-      setBansosResult({
-        loading: false,
-        success: false,
-        data: null,
-        error: 'Gagal terhubung ke server',
-        source: '',
-      });
-      toast.error('Gagal mengecek data bansos');
-    }
-  };
-
   const openUpdateDialog = (p: Penduduk) => {
     setUpdateTarget(p);
     setUpdateBantuan(JSON.parse(p.bantuan || '[]'));
@@ -191,18 +108,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     setSubmitting(true);
 
     try {
-      // Update KK head
       const res = await fetch('/api/penduduk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: updateTarget.id,
-          bantuan: updateBantuan,
-        }),
+        body: JSON.stringify({ id: updateTarget.id, bantuan: updateBantuan }),
       });
 
       if (res.ok) {
-        // Update anggota juga jika dicentang
         if (updateAnggotaToo && updateTarget.statusKeluarga === 'KEPALA KELUARGA') {
           const allPenduduk = await fetch('/api/penduduk').then(r => r.json());
           const anggota = allPenduduk.filter(
@@ -221,7 +133,10 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
           }
         }
 
-        toast.success('Bantuan berhasil diupdate');
+        const anggotaInfo = updateAnggotaToo && updateTarget.statusKeluarga === 'KEPALA KELUARGA'
+          ? ' + semua anggota KK'
+          : '';
+        toast.success(`Bantuan berhasil diupdate${anggotaInfo}`);
         setShowUpdateDialog(false);
         fetchPenduduk();
       } else {
@@ -245,7 +160,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
 
   // Filter penduduk berdasarkan bantuan
   const filteredPenduduk = penduduk.filter(p => {
-    if (!filterBantuan) return true;
+    if (!filterBantuan || filterBantuan === 'ALL') return true;
     const arr = JSON.parse(p.bantuan || '[]');
     if (filterBantuan === 'TIDAK') return arr.length === 0 || arr.includes('TIDAK');
     return arr.includes(filterBantuan);
@@ -290,7 +205,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
           className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
         >
           <ExternalLink className="h-3.5 w-3.5" />
-          Cek di cekbansos.kemensos.go.id
+          cekbansos.kemensos.go.id
         </a>
       </div>
 
@@ -323,179 +238,112 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
             <div>
               <h3 className="font-semibold text-sm text-emerald-800 mb-1">Cek Data Bantuan Sosial</h3>
               <p className="text-[11px] text-muted-foreground">
-                Masukkan NIK untuk mengecek data bantuan sosial dari Kemensos
+                Cek status bantuan sosial langsung di website resmi Kemensos
               </p>
             </div>
 
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pl-9 text-sm"
-                  placeholder="Masukkan 16 digit NIK..."
-                  value={cekNik}
-                  onChange={e => setCekNik(e.target.value.replace(/[^0-9]/g, ''))}
-                  maxLength={16}
-                  onKeyDown={e => e.key === 'Enter' && handleCekBansos()}
-                  disabled={bansosResult.loading}
-                />
+            {/* Langkah-langkah */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-blue-800 space-y-2">
+                  <p className="font-medium">Cara Cek Bantuan Sosial:</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>Klik tombol &quot;Buka Cekbansos&quot; di bawah</li>
+                    <li>Di website Kemensos, masukkan <strong>NIK</strong> atau <strong>No. KK</strong></li>
+                    <li>Lihat hasilnya: program bantuan apa saja yang terdaftar</li>
+                    <li>Kembali ke sini, cari penduduk di tab <strong>&quot;Daftar Penerima&quot;</strong></li>
+                    <li>Klik icon <Pencil className="h-3 w-3 inline" /> untuk update data bantuan di database lokal</li>
+                  </ol>
+                </div>
               </div>
-              <Button
-                onClick={handleCekBansos}
-                disabled={bansosResult.loading || cekNik.length !== 16}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                {bansosResult.loading ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4 mr-1" />
-                )}
-                {bansosResult.loading ? ' Mengecek...' : 'Cek'}
-              </Button>
             </div>
 
-            {cekNik && cekNik.length > 0 && cekNik.length < 16 && (
-              <p className="text-[10px] text-orange-500">{cekNik.length}/16 digit</p>
-            )}
+            {/* Tombol buka cekbansos */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <a
+                href="https://cekbansos.kemensos.go.id/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Buka Cekbansos Kemensos
+              </a>
+            </div>
 
-            {/* Hasil Cek */}
-            {bansosResult.success && bansosResult.data && (
-              <div className="border border-emerald-200 rounded-lg p-3 bg-emerald-50/50 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm font-semibold text-emerald-800">Data Ditemukan</span>
-                  {bansosResult.source && (
-                    <Badge variant="outline" className="text-[9px]">
-                      {bansosResult.source}
-                    </Badge>
-                  )}
+            {/* Cari lokal setelah cek */}
+            <div className="border-t pt-3">
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Sudah cek di website? Cari penduduk di database lokal untuk update data bantuan:
+              </p>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9 text-sm"
+                    placeholder="Cari berdasarkan NIK atau nama..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setActiveSection('daftar');
+                      }
+                    }}
+                  />
                 </div>
+                <Button
+                  variant="outline"
+                  className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => setActiveSection('daftar')}
+                >
+                  Lihat Daftar
+                </Button>
+              </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Nama:</span>
-                    <p className="font-medium">{bansosResult.data.nama}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">NIK:</span>
-                    <p className="font-mono">{bansosResult.data.nik}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">No. KK:</span>
-                    <p className="font-mono">{bansosResult.data.noKK}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Alamat:</span>
-                    <p>{bansosResult.data.kota}, {bansosResult.data.kecamatan}, {bansosResult.data.kelurahan}</p>
-                  </div>
-                </div>
-
-                {bansosResult.data.programBansos.length > 0 ? (
-                  <div className="space-y-2">
-                    <span className="text-xs font-semibold text-emerald-800">Program Bansos:</span>
-                    {bansosResult.data.programBansos.map((prog, idx) => (
+              {/* Quick result dari pencarian lokal */}
+              {search && search.length >= 3 && (
+                <div className="mt-2 space-y-1">
+                  {penduduk.slice(0, 3).map(p => {
+                    const bantuanArr = JSON.parse(p.bantuan || '[]');
+                    const activeBantuan = bantuanArr.filter((b: string) => b !== 'TIDAK' && b !== '');
+                    return (
                       <div
-                        key={idx}
-                        className="flex items-center justify-between bg-white rounded-md px-3 py-2 border border-emerald-100"
+                        key={p.id}
+                        className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-emerald-50 hover:border-emerald-200 transition-colors"
+                        onClick={() => openUpdateDialog(p)}
                       >
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                          <div>
-                            <p className="text-xs font-medium">{prog.namaProgram}</p>
-                            <p className="text-[10px] text-muted-foreground">Periode: {prog.periode}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">{p.namaLengkap}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            NIK: {p.nik} · {p.statusKeluarga}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {activeBantuan.length > 0 ? (
+                              activeBantuan.map((b: string) => (
+                                <Badge key={b} className="text-[9px] px-1 py-0 bg-orange-100 text-orange-700 hover:bg-orange-100">
+                                  {b}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-[10px] text-gray-400 italic">Belum ada bantuan tercatat</span>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <Badge className="text-[9px] bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                            {prog.status}
-                          </Badge>
-                          {prog.nominal > 0 && (
-                            <p className="text-[10px] font-medium text-emerald-700 mt-0.5">
-                              Rp {prog.nominal.toLocaleString('id-ID')}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-orange-600 bg-orange-50 rounded-md p-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                    <span className="text-xs">Tidak ada program bansos terdaftar</span>
-                  </div>
-                )}
-
-                {/* Cek apakah NIK ada di database lokal */}
-                {(() => {
-                  const local = penduduk.find(p => p.nik === cekNik);
-                  if (local) {
-                    const localBantuan = JSON.parse(local.bantuan || '[]');
-                    const remotePrograms = bansosResult.data.programBansos.map(p => p.namaProgram);
-                    return (
-                      <div className="border-t border-emerald-200 pt-2 space-y-1">
-                        <p className="text-[11px] font-medium text-gray-600">
-                          Data lokal: {local.namaLengkap} ({local.statusKeluarga})
-                        </p>
-                        <p className="text-[11px] text-gray-500">
-                          Bantuan lokal: {localBantuan.length > 0 && !localBantuan.includes('TIDAK')
-                            ? localBantuan.filter(b => b !== 'TIDAK').join(', ')
-                            : 'Tidak terdaftar'}
-                        </p>
-                        <div className="flex gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => {
-                              setActiveSection('daftar');
-                              setSearch(local.namaLengkap);
-                            }}
-                          >
-                            Lihat di Daftar
-                          </Button>
-                          {isAdmin && (
-                            <Button
-                              size="sm"
-                              className="text-xs bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => openUpdateDialog(local)}
-                            >
-                              Update Bantuan
-                            </Button>
-                          )}
-                        </div>
+                        {isAdmin && (
+                          <Pencil className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        )}
                       </div>
                     );
-                  }
-                  return (
-                    <div className="border-t border-emerald-200 pt-2">
-                      <p className="text-[11px] text-orange-600 flex items-center gap-1">
-                        <XCircle className="h-3.5 w-3.5" />
-                        NIK tidak ditemukan di database lokal
-                      </p>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {bansosResult.error && !bansosResult.success && !bansosResult.loading && (
-              <div className="border border-orange-200 rounded-lg p-3 bg-orange-50/50 space-y-2">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-800">Tidak Ditemukan</span>
+                  })}
+                  {penduduk.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground text-center py-2">
+                      Tidak ditemukan di database lokal
+                    </p>
+                  )}
                 </div>
-                <p className="text-xs text-orange-700">{bansosResult.error}</p>
-                <a
-                  href={`https://cekbansos.kemensos.go.id/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Cek manual di website Kemensos
-                </a>
-              </div>
-            )}
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -513,7 +361,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <Select value={filterBantuan} onValueChange={v => setFilterBantuan(v)}>
+            <Select value={filterBantuan || 'ALL'} onValueChange={v => setFilterBantuan(v === 'ALL' ? '' : v)}>
               <SelectTrigger className="text-sm w-[140px]">
                 <SelectValue placeholder="Filter Bantuan" />
               </SelectTrigger>
@@ -579,7 +427,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
                               onClick={() => openUpdateDialog(p)}
                               title="Update Bantuan"
                             >
-                              <Copy className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         )}
@@ -590,7 +438,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
               })}
               {filteredPenduduk.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>Tidak ada data penduduk</p>
+                  <p>Tidak ada data ditemukan</p>
                 </div>
               )}
             </div>
@@ -662,7 +510,6 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
               <ScrollArea className="max-h-[300px]">
                 <div className="space-y-1.5">
                   {(() => {
-                    // Group by KK and show only those with active bantuan
                     const kkMap = new Map<string, { kepala: Penduduk | null; anggota: Penduduk[]; bantuan: Set<string> }>();
                     for (const p of penduduk) {
                       let group = kkMap.get(p.noKK);
@@ -717,10 +564,16 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
                 <p className="text-[11px] text-muted-foreground">
                   NIK: {updateTarget.nik} · {updateTarget.statusKeluarga}
                 </p>
+                <p className="text-[10px] text-muted-foreground">
+                  No. KK: {updateTarget.noKK}
+                </p>
               </div>
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Pilih Bantuan</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Sesuaikan dengan data dari cekbansos.kemensos.go.id
+                </p>
                 <div className="flex flex-wrap gap-3">
                   {BANTUAN_OPTIONS.map(b => (
                     <label key={b} className="flex items-center gap-1.5 cursor-pointer">
@@ -735,13 +588,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
               </div>
 
               {updateTarget.statusKeluarga === 'KEPALA KELUARGA' && (
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
                   <Checkbox
                     checked={updateAnggotaToo}
                     onCheckedChange={v => setUpdateAnggotaToo(v as boolean)}
                   />
                   <div>
-                    <span className="text-xs font-medium">Update semua anggota keluarga juga</span>
+                    <span className="text-xs font-medium text-emerald-800">Update semua anggota keluarga juga</span>
                     <p className="text-[10px] text-muted-foreground">
                       Bantuan akan diterapkan ke seluruh anggota KK {updateTarget.noKK}
                     </p>
