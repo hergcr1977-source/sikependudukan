@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase } from '@/lib/utils-kependudukan';
 
@@ -224,6 +225,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    revalidatePath('/api/kejadian');
+    revalidatePath('/api/penduduk');
+    revalidatePath('/api/statistik');
     return NextResponse.json({
       ...data,
       pendudukAdded,
@@ -256,6 +260,8 @@ export async function PUT(request: NextRequest) {
     if (data.tanggal !== undefined) updateData.tanggal = new Date(data.tanggal);
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
+    revalidatePath('/api/kejadian');
+    revalidatePath('/api/statistik');
     const result = await db.kejadian.update({
       where: { id },
       data: updateData,
@@ -278,6 +284,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await db.kejadian.delete({ where: { id } });
+    revalidatePath('/api/kejadian');
+    revalidatePath('/api/statistik');
     return NextResponse.json({ message: 'Data berhasil dihapus' });
   } catch (error) {
     console.error(error);

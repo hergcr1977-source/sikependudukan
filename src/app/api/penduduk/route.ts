@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 
@@ -105,6 +106,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    revalidatePath('/api/penduduk');
+    revalidatePath('/api/statistik');
     return NextResponse.json(penduduk, { status: 201 });
   } catch (error) {
     console.error(error);
@@ -181,6 +184,8 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    revalidatePath('/api/penduduk');
+    revalidatePath('/api/statistik');
     return NextResponse.json(penduduk);
   } catch (error) {
     console.error(error);
@@ -205,6 +210,11 @@ if (deleteAll === 'true') {
       await db.kejadian.deleteMany();
       await db.laporanBulanan.deleteMany();
 
+      revalidatePath('/api/penduduk');
+      revalidatePath('/api/penduduk-sementara');
+      revalidatePath('/api/kejadian');
+      revalidatePath('/api/statistik');
+
       return NextResponse.json({
         message: `Seluruh data berhasil dihapus: ${countPenduduk} penduduk, ${countSementara} penduduk sementara, ${countKejadian} kejadian, ${countLaporan} laporan tersimpan`
       });
@@ -215,6 +225,8 @@ if (deleteAll === 'true') {
     }
 
     await db.penduduk.delete({ where: { id: parseInt(id) } });
+    revalidatePath('/api/penduduk');
+    revalidatePath('/api/statistik');
     return NextResponse.json({ message: 'Data berhasil dihapus' });
   } catch (error) {
     console.error(error);

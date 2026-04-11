@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase } from '@/lib/utils-kependudukan';
 import {
@@ -241,6 +242,10 @@ export async function POST(request: NextRequest) {
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    revalidatePath('/api/penduduk-sementara');
+    revalidatePath('/api/statistik');
+
     return NextResponse.json({
       message: `Berhasil mengimpor ${totalInserted} data penduduk sementara${skipped > 0 ? ` (${skipped} dilewati)` : ''}`,
       imported: totalInserted, skipped,

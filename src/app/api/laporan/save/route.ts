@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP } from '@/lib/utils-kependudukan';
 
@@ -29,6 +30,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    revalidatePath('/api/laporan/save');
+    revalidatePath('/api/laporan');
     return NextResponse.json({
       success: true,
       id: saved.id,
@@ -96,6 +99,7 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    revalidatePath('/api/laporan/save');
     return NextResponse.json({ success: true, message: 'Keterangan berhasil disimpan' });
   } catch (error) {
     console.error(error);
@@ -113,6 +117,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await db.laporanBulanan.delete({ where: { id } });
+    revalidatePath('/api/laporan/save');
     return NextResponse.json({ success: true, message: 'Laporan berhasil dihapus' });
   } catch (error) {
     console.error(error);

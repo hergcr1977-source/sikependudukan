@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 
@@ -97,6 +98,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    revalidatePath('/api/penduduk-sementara');
+    revalidatePath('/api/statistik');
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     console.error(error);
@@ -163,6 +166,8 @@ export async function PUT(request: NextRequest) {
     if (data.kabupaten !== undefined) updateData.kabupaten = toUpperCase(data.kabupaten || 'BOGOR');
     if (data.provinsi !== undefined) updateData.provinsi = toUpperCase(data.provinsi || 'JAWA BARAT');
 
+    revalidatePath('/api/penduduk-sementara');
+    revalidatePath('/api/statistik');
     const result = await db.pendudukSementara.update({
       where: { id },
       data: updateData,
@@ -185,6 +190,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await db.pendudukSementara.delete({ where: { id } });
+    revalidatePath('/api/penduduk-sementara');
+    revalidatePath('/api/statistik');
     return NextResponse.json({ message: 'Data berhasil dihapus' });
   } catch (error) {
     console.error(error);

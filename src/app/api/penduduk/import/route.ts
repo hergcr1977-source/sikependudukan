@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase } from '@/lib/utils-kependudukan';
 import {
@@ -224,6 +225,9 @@ export async function POST(request: NextRequest) {
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[Import] ${totalInserted} records in ${elapsed}s`);
+
+    revalidatePath('/api/penduduk');
+    revalidatePath('/api/statistik');
 
     return NextResponse.json({
       message: `Berhasil mengimpor ${totalInserted} data penduduk dari file${skipped > 0 ? ` (${skipped} dilewati)` : ''}`,
