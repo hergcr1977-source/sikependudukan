@@ -203,6 +203,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       kewarganegaraan: formData.kewarganegaraan || 'WNI',
       namaAyah: formData.namaAyah || '',
       namaIbu: formData.namaIbu || '',
+      keterangan: formData.keterangan || '',
     }]);
     setExpandedAnggota(prev => new Set([...prev, anggotaList.length]));
   };
@@ -465,6 +466,17 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
 
   const updateField = (field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Auto-propagate keterangan dari KK head ke semua anggota (mode KK_BARU)
+    if (field === 'keterangan' && !editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
+      setAnggotaList(prev => prev.map(a => ({ ...a, keterangan: value as string })));
+    }
+    // Auto-fill keterangan dari KK head saat pilih KK (mode ANGGOTA)
+    if (field === 'noKK' && !editingId && addMode === 'ANGGOTA' && value) {
+      const group = kkGroups.find(g => g.noKK === value);
+      if (group?.kepala?.keterangan) {
+        setFormData(prev => ({ ...prev, keterangan: group.kepala.keterangan || '' }));
+      }
+    }
   };
 
   const toggleBantuan = (item: string) => {
@@ -876,6 +888,12 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
                   value={formData.keterangan}
                   onChange={e => updateField('keterangan', e.target.value)}
                 />
+                {editingId && formData.statusKeluarga === 'KEPALA KELUARGA' && (
+                  <p className="text-[10px] text-orange-600 mt-1">* Keterangan akan otomatis diterapkan ke semua anggota keluarga</p>
+                )}
+                {!editingId && addMode === 'KK_BARU' && anggotaList.length > 0 && (
+                  <p className="text-[10px] text-blue-600 mt-1">* Keterangan otomatis diterapkan ke {anggotaList.length} anggota keluarga</p>
+                )}
               </div>
             </div>
 
