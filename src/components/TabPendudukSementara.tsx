@@ -186,6 +186,13 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Listen for data changes from other tabs
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener('sikependudukan-data-changed', handler);
+    return () => window.removeEventListener('sikependudukan-data-changed', handler);
+  }, [fetchData]);
+
   const openAdd = (noKK?: string) => {
     setEditingId(null);
     setFormError('');
@@ -249,6 +256,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
         toast.success(editingId ? 'Data berhasil diupdate' : 'Data berhasil ditambahkan');
         setShowForm(false);
         fetchData();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         setFormError(err.error || 'Gagal menyimpan');
@@ -265,6 +273,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       toast.success('Data berhasil dihapus');
       setDeleteTarget(null);
       fetchData();
+      window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
     }
   };
 
@@ -294,6 +303,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
         }
         fetchData();
         setShowImport(false);
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         toast.error(`Gagal mengimpor: ${err.error || 'Unknown error'}`, { duration: 8000 });

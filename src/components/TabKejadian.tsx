@@ -182,6 +182,13 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
   useEffect(() => { fetchKKOptions(); }, [fetchKKOptions]);
   useEffect(() => { setLoading(true); fetchData(); }, [fetchData]);
 
+  // Listen for data changes from other tabs
+  useEffect(() => {
+    const handler = () => { fetchKKOptions(); fetchData(); };
+    window.addEventListener('sikependudukan-data-changed', handler);
+    return () => window.removeEventListener('sikependudukan-data-changed', handler);
+  }, [fetchKKOptions, fetchData]);
+
   const kkMembers = allPenduduk.filter(p => p.noKK === formData.noKK);
 
   const isDatang = formData.jenisKejadian === 'DATANG';
@@ -351,6 +358,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
         setShowForm(false);
         fetchKKOptions();
         fetchData();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         setFormError(err.error || 'Gagal menyimpan');
@@ -367,6 +375,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
       toast.success('Kejadian dihapus');
       setDeleteTarget(null);
       fetchData();
+      window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
     }
   };
 

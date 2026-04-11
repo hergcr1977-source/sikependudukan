@@ -117,7 +117,18 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
         group.anggota.push(p);
       }
     }
-    setKKGroups(Array.from(map.values()));
+    const groups = Array.from(map.values());
+    // Urutkan KK berdasarkan nama kepala keluarga A-Z
+    groups.sort((a, b) => {
+      const nameA = a.kepala?.namaLengkap || '';
+      const nameB = b.kepala?.namaLengkap || '';
+      return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+    });
+    // Urutkan anggota dalam setiap KK A-Z
+    for (const group of groups) {
+      group.anggota.sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id', { sensitivity: 'base' }));
+    }
+    setKKGroups(groups);
   };
 
   // Setup database dulu, baru fetch penduduk
@@ -134,6 +145,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   useEffect(() => {
     if (dbReady) fetchPenduduk();
   }, [dbReady, fetchPenduduk]);
+
+  // Listen for data changes from other tabs
+  useEffect(() => {
+    const handler = () => fetchPenduduk();
+    window.addEventListener('sikependudukan-data-changed', handler);
+    return () => window.removeEventListener('sikependudukan-data-changed', handler);
+  }, [fetchPenduduk]);
 
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);
@@ -243,6 +261,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
         toast.success(`Data bantuan berhasil diupdate${info}`);
         setShowUpdateDialog(false);
         fetchPenduduk();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         toast.error(err.error || 'Gagal mengupdate');

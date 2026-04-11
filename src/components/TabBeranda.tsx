@@ -60,6 +60,13 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
     }
   }, [isActive]);
 
+  // Listen for data changes from other tabs
+  useEffect(() => {
+    const handler = () => fetchStatistik();
+    window.addEventListener('sikependudukan-data-changed', handler);
+    return () => window.removeEventListener('sikependudukan-data-changed', handler);
+  }, []);
+
   const fetchStatistik = async () => {
     try {
       const res = await fetch('/api/statistik');
@@ -88,6 +95,7 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
         setDeleteDialogOpen(false);
         setDeleteConfirmText('');
         fetchStatistik();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         setDeleteMsg(err.error || 'Gagal menghapus data');

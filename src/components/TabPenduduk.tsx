@@ -205,6 +205,13 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
     fetchPenduduk();
   }, [fetchPenduduk]);
 
+  // Listen for data changes from other tabs
+  useEffect(() => {
+    const handler = () => fetchPenduduk();
+    window.addEventListener('sikependudukan-data-changed', handler);
+    return () => window.removeEventListener('sikependudukan-data-changed', handler);
+  }, [fetchPenduduk]);
+
   const openAddForm = (noKK?: string, isAnggota?: boolean) => {
     setEditingId(null);
     setFormError('');
@@ -331,6 +338,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
           toast.success('Data berhasil diupdate');
           setShowForm(false);
           fetchPenduduk();
+          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
         } else {
           const err = await res.json();
           setFormError(err.error || 'Gagal menyimpan data');
@@ -360,6 +368,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
           toast.success('Anggota keluarga berhasil ditambahkan');
           setShowForm(false);
           fetchPenduduk();
+          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
         } else {
           const err = await res.json();
           setFormError(err.error || 'Gagal menyimpan data');
@@ -448,6 +457,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
 
       setShowForm(false);
       fetchPenduduk();
+      window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
     } catch {
       setFormError('Terjadi kesalahan');
     } finally {
@@ -463,6 +473,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
         toast.success('Data berhasil dihapus');
         setDeleteTarget(null);
         fetchPenduduk();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       }
     } catch {
       toast.error('Gagal menghapus data');
@@ -495,6 +506,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
         }
         fetchPenduduk();
         setShowImport(false);
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
       } else {
         const err = await res.json();
         toast.error(`Gagal mengimpor: ${err.error || 'Unknown error'}`, { duration: 8000 });
