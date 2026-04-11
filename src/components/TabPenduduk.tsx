@@ -1221,10 +1221,14 @@ function PendudukRow({
   onDelete: (p: Penduduk) => void;
   onAddMember?: () => void;
 }) {
-  const umur = hitungUmur(penduduk.tanggalLahir);
+  let umur = { label: '-' };
+  try { umur = hitungUmur(penduduk.tanggalLahir); } catch { /* skip */ }
+
+  let bantuanArr: string[] = [];
+  try { bantuanArr = JSON.parse(penduduk.bantuan || '[]').filter((b: string) => b !== 'TIDAK' && b !== ''); } catch { /* skip */ }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-0">
+    <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-white/80 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-sm font-medium truncate">{penduduk.namaLengkap}</span>
@@ -1232,25 +1236,24 @@ function PendudukRow({
           {!isKK && (
             <Badge variant="outline" className="text-[9px] px-1 py-0">{penduduk.statusKeluarga}</Badge>
           )}
-          {penduduk.bpjs && penduduk.bpjs !== 'TIDAK' && (
-            <Badge className="text-[9px] px-1.5 py-0 bg-blue-100 text-blue-700 hover:bg-blue-100">BPJS {penduduk.bpjs}</Badge>
-          )}
         </div>
         <p className="text-[10px] text-muted-foreground mt-0.5">
           NIK: {penduduk.nik} · {penduduk.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'} · Umur: {umur.label}
         </p>
-        {isKK && penduduk.bantuan && penduduk.bantuan !== '[]' && (() => {
-          const arr = JSON.parse(penduduk.bantuan);
-          const active = arr.filter((b: string) => b !== 'TIDAK');
-          if (active.length > 0) return (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {active.map((b: string) => (
-                <Badge key={b} variant="outline" className="text-[9px] px-1.5 py-0 border-orange-300 text-orange-600">{b}</Badge>
-              ))}
-            </div>
-          );
-          return null;
-        })()}
+        {/* Bantuan, BPJS, Keterangan */}
+        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+          {bantuanArr.length > 0 && (
+            bantuanArr.map((b: string) => (
+              <Badge key={b} variant="outline" className="text-[9px] px-1.5 py-0 border-orange-300 text-orange-600">{b}</Badge>
+            ))
+          )}
+          {penduduk.bpjs && penduduk.bpjs !== 'TIDAK' && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-blue-100 text-blue-700 hover:bg-blue-100">BPJS {penduduk.bpjs}</Badge>
+          )}
+          {penduduk.keterangan && (
+            <span className="text-[9px] text-gray-500 italic truncate max-w-[200px]">{penduduk.keterangan}</span>
+          )}
+        </div>
       </div>
       <div className="flex gap-1 shrink-0">
         {isAdmin && isKK && onAddMember && (
