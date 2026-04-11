@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -154,9 +154,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   // Update Dialog handlers
   const openUpdateDialog = (p: Penduduk) => {
     setUpdateTarget(p);
-    setUpdateBantuan(JSON.parse(p.bantuan || '[]'));
+    try {
+      setUpdateBantuan(JSON.parse(p.bantuan || '[]'));
+    } catch {
+      setUpdateBantuan([]);
+    }
     setUpdateBPJS(p.bpjs || 'TIDAK');
-    setUpdateDesil(p.desil || '');
+    setUpdateDesil(p.desil || 'TIDAK_ADA');
     setUpdateAnggotaToo(true);
     setShowUpdateDialog(true);
   };
@@ -172,6 +176,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     setSubmitting(true);
 
     try {
+      const desilValue = updateDesil === 'TIDAK_ADA' ? '' : updateDesil;
       const res = await fetch('/api/penduduk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -179,7 +184,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
           id: updateTarget.id,
           bantuan: updateBantuan,
           bpjs: updateBPJS,
-          desil: updateDesil,
+          desil: desilValue,
         }),
       });
 
@@ -202,7 +207,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
                 id: a.id,
                 bantuan: updateBantuan,
                 bpjs: updateBPJS,
-                desil: updateDesil,
+                desil: desilValue,
               }),
             });
           }
@@ -229,11 +234,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   const handleExportCSV = () => {
     const header = 'No,No KK,NIK,Nama Lengkap,Jenis Kelamin,Status Keluarga,Umur,Desil,Bantuan,BPJS,Keterangan\n';
     const rows = penduduk.map((p, i) => {
-      const umur = hitungUmur(p.tanggalLahir);
-      const bantuanArr = JSON.parse(p.bantuan || '[]').filter((b: string) => b !== 'TIDAK' && b !== '');
+      let umur = { label: '-' };
+      try { umur = hitungUmur(p.tanggalLahir); } catch { /* skip */ }
+      let bantuanArr: string[] = [];
+      try { bantuanArr = JSON.parse(p.bantuan || '[]').filter((b: string) => b !== 'TIDAK' && b !== ''); } catch { /* skip */ }
       const bantuanStr = bantuanArr.join('; ') || '-';
       const bpjsStr = (p.bpjs && p.bpjs !== 'TIDAK') ? p.bpjs : '-';
-      const desilStr = p.desil || '-';
+      const desilStr = (p.desil && p.desil !== 'TIDAK_ADA') ? p.desil : '-';
       return `${i + 1},"${p.noKK}","${p.nik}","${p.namaLengkap}","${p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}","${p.statusKeluarga}","${umur.label}","${desilStr}","${bantuanStr}","${bpjsStr}","${p.keterangan || '-'}"`;
     }).join('\n');
 
@@ -250,7 +257,10 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
 
   // Helper: render bantuan badges
   const renderBantuanBadges = (bantuanStr: string) => {
-    const arr = JSON.parse(bantuanStr || '[]').filter((b: string) => b !== 'TIDAK' && b !== '');
+    let arr: string[] = [];
+    try {
+      arr = JSON.parse(bantuanStr || '[]').filter((b: string) => b !== 'TIDAK' && b !== '');
+    } catch { arr = []; }
     if (arr.length === 0) return <span className="text-gray-400 text-[11px]">-</span>;
     return (
       <div className="flex flex-wrap gap-0.5">
@@ -269,7 +279,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
 
   // Helper: render desil badge
   const renderDesilBadge = (desil: string | null) => {
-    if (!desil) return <span className="text-gray-400 text-[11px]">-</span>;
+    if (!desil || desil === 'TIDAK_ADA') return <span className="text-gray-400 text-[11px]">-</span>;
     return <Badge className="text-[9px] px-1.5 py-0 bg-purple-100 text-purple-700 hover:bg-purple-100">{desil}</Badge>;
   };
 
@@ -327,9 +337,11 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
             const allBantuan = new Set<string>();
             const allMembers = [group.kepala, ...group.anggota].filter(Boolean) as Penduduk[];
             allMembers.forEach(p => {
-              JSON.parse(p.bantuan || '[]').forEach((b: string) => {
-                if (b !== 'TIDAK' && b !== '') allBantuan.add(b);
-              });
+              try {
+                JSON.parse(p.bantuan || '[]').forEach((b: string) => {
+                  if (b !== 'TIDAK' && b !== '') allBantuan.add(b);
+                });
+              } catch { /* skip invalid JSON */ }
             });
 
             return (
@@ -453,12 +465,12 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
               {/* Desil */}
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Desil</Label>
-                <Select value={updateDesil} onValueChange={setUpdateDesil}>
+                <Select value={updateDesil || 'TIDAK_ADA'} onValueChange={setUpdateDesil}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Pilih Desil..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">-- Tidak Ada --</SelectItem>
+                    <SelectItem value="TIDAK_ADA">-- Tidak Ada --</SelectItem>
                     {DESIL_OPTIONS.map(d => (
                       <SelectItem key={d} value={d}>{d}</SelectItem>
                     ))}
@@ -570,7 +582,8 @@ function PendudukRow({
   renderBPJSBadge,
   renderDesilBadge,
 }: PendudukRowProps) {
-  const umur = hitungUmur(p.tanggalLahir);
+  let umur = { label: '-' };
+  try { umur = hitungUmur(p.tanggalLahir); } catch { /* skip */ }
 
   return (
     <div className="border-b border-gray-100 last:border-b-0 hover:bg-white transition-colors">
