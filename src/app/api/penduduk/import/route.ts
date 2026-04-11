@@ -33,7 +33,7 @@ function parseTanggal(raw: any): string | null {
     }
   }
   const num = Number(str);
-  if (!isNaN(num) && str === String(num) && num > 20000 && num < 60000) {
+  if (!isNaN(num) && str === String(num) && num > 10000 && num < 80000) {
     const d = new Date(1899, 11, 30); d.setTime(d.getTime() + num * 86400000);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   }
