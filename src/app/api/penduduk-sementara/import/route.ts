@@ -25,47 +25,47 @@ export async function POST(request: NextRequest) {
           await db.$executeRawUnsafe(`ALTER TABLE PendudukSementara ADD COLUMN ${col} TEXT DEFAULT ${def};`);
         }
       }
-    } catch { /* abaikan jika gagal */ }
+    } catch (e) {
+      console.warn('Auto-migration warning:', e);
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as string[][];
 
-    // Pre-fetch semua NIK yang sudah ada (sekali query, bukan per-baris)
+    if (rows.length < 3) {
+      return NextResponse.json({ error: 'File kosong atau tidak memiliki cukup data' }, { status: 400 });
+    }
+
+    // Pre-fetch semua NIK yang sudah ada
     const existingNIKs = new Set(
       (await db.pendudukSementara.findMany({ select: { nik: true } })).map(p => p.nik)
     );
 
+    // Pre-fetch juga NIK dari tabel penduduk utama untuk cek duplikat lintas tabel
+    const existingPendudukNIKs = new Set(
+      (await db.penduduk.findMany({ select: { nik: true } })).map(p => p.nik)
+    );
+
     let errors: string[] = [];
 
-    // Normalize status keterangan
+    // Normalize status keterangan - lebih fleksibel, default ke NUMPANG KELUARGA jika tidak dikenali
     const normalizeStatus = (raw: string): string => {
       const upper = raw.toUpperCase().trim();
-      if (!upper) return '';
+      if (!upper) return 'NUMPANG KELUARGA'; // Default jika kosong
       if (upper.includes('KONTRAK') || upper.includes('KONTRAN')) return 'KONTRAK';
       if (upper.includes('SEWA')) return 'SEWA';
       if (upper.includes('MENUMPANG') || upper.includes('NUMPANG')) return 'NUMPANG KELUARGA';
       if (upper.includes('KOS') || upper.includes('KOST')) return 'KOS';
-      return upper;
+      // Jika tidak dikenali, gunakan default
+      return 'NUMPANG KELUARGA';
     };
 
     let currentNoKK = '';
     const today = new Date().toISOString().split('T')[0];
 
-    // Siapkan semua data valid terlebih dahulu
-    const recordsToInsert: Array<{
-      noKK: string; nik: string; namaLengkap: string; jenisKelamin: string;
-      statusKeluarga: string; tempatLahir: string; tanggalLahir: Date;
-      agama: string; pendidikan: string; pekerjaan: string; statusPerkawinan: string;
-      kewarganegaraan: string; namaAyah: string; namaIbu: string;
-      namaPanggilan: string | null; noHP: string | null;
-      statusKeterangan: string; alamatAsal: string;
-      bantuan: string; bpjs: string | null; alamatLengkap: string;
-      tanggalMasuk: Date; tanggalKeluar: Date | null; keterangan: string | null;
-    }> = [];
-
-    // Skip header rows: rows[0] = header, rows[1] = sub-header (Ayah/Ibu)
+    // Skip header rows: rows[0] = header, rows[1] = sub-header
     for (let i = 2; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length < 5) continue;
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       // Skip rows that are only status-related (e.g., only WNI in column)
       if (!jenisKelamin && !tempatLahir && !tanggalLahirRaw && !agama) continue;
 
-      // Track current No. KK (only KK head has No. KK value)
+      // Track current No. KK
       if (noKKRaw) {
         currentNoKK = noKKRaw;
       }
@@ -109,19 +109,22 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Cek duplikat NIK dari cache (sangat cepat, tanpa query DB)
+      // Cek duplikat NIK dari penduduk sementara
       if (existingNIKs.has(nik)) {
-        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada (${namaLengkap})`);
+        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada di penduduk sementara (${namaLengkap})`);
         continue;
       }
 
+      // Cek duplikat NIK dari penduduk utama
+      if (existingPendudukNIKs.has(nik)) {
+        errors.push(`Baris ${i + 1}: NIK ${nik} sudah ada di data penduduk utama (${namaLengkap})`);
+        continue;
+      }
+
+      // Status keterangan - default ke NUMPANG KELUARGA jika kosong/tidak dikenali
       const statusKeterangan = normalizeStatus(statusWarga);
-      if (!statusKeterangan) {
-        errors.push(`Baris ${i + 1}: Status warga tidak valid (${statusWarga}) - ${namaLengkap}`);
-        continue;
-      }
 
-      // Parse tanggal lahir - format: "MM/DD/YY" (e.g., "10/10/81", "6/12/83")
+      // Parse tanggal lahir
       let tanggalLahirStr = '';
       if (tanggalLahirRaw && tanggalLahirRaw.includes('/')) {
         const parts = tanggalLahirRaw.split('/');
@@ -154,61 +157,57 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Tandai NIK sudah diproses agar tidak duplikat dalam batch ini
+      // Tandai NIK sudah diproses
       existingNIKs.add(nik);
 
-      const alamatAsal = keterangan || '';
-
-      recordsToInsert.push({
-        noKK: currentNoKK,
-        nik,
-        namaLengkap: toUpperCase(namaLengkap),
-        jenisKelamin: toUpperCase(jenisKelamin),
-        statusKeluarga: toUpperCase(statusKeluarga),
-        tempatLahir: toUpperCase(tempatLahir),
-        tanggalLahir: new Date(tanggalLahirStr),
-        agama: toUpperCase(agama),
-        pendidikan: toUpperCase(pendidikan),
-        pekerjaan: toUpperCase(pekerjaan),
-        statusPerkawinan: toUpperCase(statusPerkawinan),
-        kewarganegaraan: toUpperCase(kewarganegaraan),
-        namaAyah: toUpperCase(namaAyah),
-        namaIbu: toUpperCase(namaIbu),
-        namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
-        noHP: null,
-        statusKeterangan: statusKeterangan,
-        alamatAsal: alamatAsal,
-        bantuan: '[]',
-        bpjs: null,
-        alamat: ALAMAT_DEFAULT,
-        rt: RT_DEFAULT,
-        rw: RW_DEFAULT,
-        kelurahan: KELURAHAN_DEFAULT,
-        kecamatan: KECAMATAN_DEFAULT,
-        kabupaten: KABUPATEN_DEFAULT,
-        provinsi: PROVINSI_DEFAULT,
-        alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
-        tanggalMasuk: new Date(today),
-        tanggalKeluar: null,
-        keterangan: null,
-      });
-    }
-
-    // Batch insert menggunakan transaction (jauh lebih cepat dari insert satu per satu)
-    let imported = 0;
-    if (recordsToInsert.length > 0) {
-      const BATCH_SIZE = 50;
-      for (let batchStart = 0; batchStart < recordsToInsert.length; batchStart += BATCH_SIZE) {
-        const batch = recordsToInsert.slice(batchStart, batchStart + BATCH_SIZE);
-        await db.$transaction(
-          batch.map(r => db.pendudukSementara.create({ data: r }))
-        );
-        imported += batch.length;
+      // Insert satu per satu dengan error handling individual
+      try {
+        await db.pendudukSementara.create({
+          data: {
+            noKK: currentNoKK,
+            nik,
+            namaLengkap: toUpperCase(namaLengkap),
+            jenisKelamin: toUpperCase(jenisKelamin),
+            statusKeluarga: toUpperCase(statusKeluarga),
+            tempatLahir: toUpperCase(tempatLahir),
+            tanggalLahir: new Date(tanggalLahirStr),
+            agama: toUpperCase(agama),
+            pendidikan: toUpperCase(pendidikan),
+            pekerjaan: toUpperCase(pekerjaan),
+            statusPerkawinan: toUpperCase(statusPerkawinan),
+            kewarganegaraan: toUpperCase(kewarganegaraan),
+            namaAyah: toUpperCase(namaAyah),
+            namaIbu: toUpperCase(namaIbu),
+            namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
+            noHP: null,
+            statusKeterangan: statusKeterangan,
+            alamatAsal: keterangan || '',
+            bantuan: '[]',
+            bpjs: null,
+            alamat: ALAMAT_DEFAULT,
+            rt: RT_DEFAULT,
+            rw: RW_DEFAULT,
+            kelurahan: KELURAHAN_DEFAULT,
+            kecamatan: KECAMATAN_DEFAULT,
+            kabupaten: KABUPATEN_DEFAULT,
+            provinsi: PROVINSI_DEFAULT,
+            alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
+            tanggalMasuk: new Date(today),
+            tanggalKeluar: null,
+            keterangan: keterangan || null,
+          },
+        });
+      } catch (insertError) {
+        console.error(`Insert error row ${i + 1} (${namaLengkap}):`, insertError);
+        errors.push(`Baris ${i + 1}: Gagal menyimpan ${namaLengkap} - ${String(insertError)}`);
       }
     }
 
+    // Hitung jumlah yang berhasil
+    const imported = await db.pendudukSementara.count();
+
     return NextResponse.json({
-      message: `Berhasil mengimpor ${imported} data penduduk sementara`,
+      message: `Berhasil mengimpor data penduduk sementara. Total: ${imported} data`,
       imported,
       errors: errors.length > 0 ? errors : undefined,
     });
