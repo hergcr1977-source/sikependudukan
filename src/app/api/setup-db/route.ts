@@ -4,31 +4,38 @@ import { db } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 async function getColumns(tableName: string): Promise<string[]> {
+  // PostgreSQL table names are case-insensitive; information_schema stores them lowercase
   const result = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName.toLowerCase()}' ORDER BY ordinal_position`
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName.toLowerCase()}'`
   );
-  return result.map(r => r.column_name);
+  return result.map(r => r.column_name.toLowerCase());
 }
 
-async function addColumnIfMissing(tableName: string, column: string, type: string, defaultValue?: string) {
-  const columns = await getColumns(tableName);
-  if (!columns.includes(column.toLowerCase())) {
-    const sql = defaultValue
-      ? `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type} DEFAULT ${defaultValue}`
-      : `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type}`;
-    await db.$executeRawUnsafe(sql);
-    return true;
+async function ensureColumn(tableName: string, column: string, type: string, defaultValue?: string) {
+  try {
+    const columns = await getColumns(tableName);
+    if (!columns.includes(column.toLowerCase())) {
+      const sql = defaultValue
+        ? `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type} DEFAULT ${defaultValue}`
+        : `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type}`;
+      await db.$executeRawUnsafe(sql);
+      return `Added ${tableName}.${column}`;
+    }
+    return null;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Ignore "already exists" errors (race condition)
+    if (msg.includes('already exists')) return null;
+    return `Error ${tableName}.${column}: ${msg.substring(0, 100)}`;
   }
-  return false;
 }
 
 export async function GET() {
   try {
-    const added: string[] = [];
+    const results: string[] = [];
 
-    // Ensure all tables exist by running prisma db push via raw SQL
-    // Penduduk table columns
-    const pendudukCols = [
+    // Penduduk columns
+    const pendudukMigrations = [
       ['desil', 'TEXT'],
       ['alamatLengkap', 'TEXT'],
       ['alamat', 'TEXT', "'KP. CEMPLANG'"],
@@ -46,48 +53,40 @@ export async function GET() {
       ['punyaKTP', 'TEXT', "'BELUM'"],
     ] as const;
 
-    for (const col of pendudukCols) {
-      const added_col = await addColumnIfMissing('Penduduk', col[0], col[1], col[2]);
-      if (added_col) added.push(`Penduduk.${col[0]}`);
+    for (const [col, type, defaultVal] of pendudukMigrations) {
+      const result = await ensureColumn('Penduduk', col, type, defaultVal);
+      if (result) results.push(result);
     }
 
-    // PendudukSementara table columns
-    try {
-      const sementaraCols = [
-        ['alamatLengkap', 'TEXT'],
-        ['alamat', 'TEXT', "'KP. CEMPLANG'"],
-        ['rt', 'TEXT', "'001'"],
-        ['rw', 'TEXT', "'002'"],
-        ['kelurahan', 'TEXT', "'SUKAMAJU'"],
-        ['kecamatan', 'TEXT', "'CIBUNGBULANG'"],
-        ['kabupaten', 'TEXT', "'BOGOR'"],
-        ['provinsi', 'TEXT', "'JAWA BARAT'"],
-        ['keterangan', 'TEXT'],
-        ['bantuan', 'TEXT', "'[]'"],
-        ['bpjs', 'TEXT'],
-        ['namaPanggilan', 'TEXT'],
-        ['noHP', 'TEXT'],
-      ] as const;
+    // PendudukSementara columns
+    const sementaraMigrations = [
+      ['alamatLengkap', 'TEXT'],
+      ['alamat', 'TEXT', "'KP. CEMPLANG'"],
+      ['rt', 'TEXT', "'001'"],
+      ['rw', 'TEXT', "'002'"],
+      ['kelurahan', 'TEXT', "'SUKAMAJU'"],
+      ['kecamatan', 'TEXT', "'CIBUNGBULANG'"],
+      ['kabupaten', 'TEXT', "'BOGOR'"],
+      ['provinsi', 'TEXT', "'JAWA BARAT'"],
+      ['keterangan', 'TEXT'],
+      ['bantuan', 'TEXT', "'[]'"],
+      ['bpjs', 'TEXT'],
+      ['namaPanggilan', 'TEXT'],
+      ['noHP', 'TEXT'],
+    ] as const;
 
-      for (const col of sementaraCols) {
-        const added_col = await addColumnIfMissing('PendudukSementara', col[0], col[1], col[2]);
-        if (added_col) added.push(`PendudukSementara.${col[0]}`);
-      }
-    } catch (e) {
-      // PendudukSementara table might not exist yet
-      console.warn('PendudukSementara migration skipped:', e);
+    for (const [col, type, defaultVal] of sementaraMigrations) {
+      const result = await ensureColumn('PendudukSementara', col, type, defaultVal);
+      if (result) results.push(result);
     }
 
-    // LaporanBulanan table
-    try {
-      await addColumnIfMissing('LaporanBulanan', 'keterangan', 'TEXT');
-    } catch (e) {
-      console.warn('LaporanBulanan migration skipped:', e);
-    }
+    // LaporanBulanan columns
+    const result = await ensureColumn('LaporanBulanan', 'keterangan', 'TEXT');
+    if (result) results.push(result);
 
     return NextResponse.json({
       message: 'Database siap.',
-      addedColumns: added,
+      changes: results,
     });
   } catch (error) {
     console.error('Migration error:', error);
