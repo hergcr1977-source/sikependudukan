@@ -83,7 +83,6 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   const [updateBantuan, setUpdateBantuan] = useState<string[]>([]);
   const [updateBPJS, setUpdateBPJS] = useState('');
   const [updateDesil, setUpdateDesil] = useState('');
-  const [updateAnggotaToo, setUpdateAnggotaToo] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchPenduduk = useCallback(async () => {
@@ -161,7 +160,6 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     }
     setUpdateBPJS(p.bpjs || 'TIDAK');
     setUpdateDesil(p.desil || 'TIDAK_ADA');
-    setUpdateAnggotaToo(true);
     setShowUpdateDialog(true);
   };
 
@@ -177,6 +175,18 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
 
     try {
       const desilValue = updateDesil === 'TIDAK_ADA' ? '' : updateDesil;
+
+      // Desil otomatis disimpan di keterangan
+      // Jika ada keterangan lama, gabungkan (pisah dengan koma)
+      let keteranganValue = updateTarget.keterangan || '';
+      // Hapus desil lama dari keterangan (format: "DESIL X")
+      keteranganValue = keteranganValue.replace(/,?\s*DESIL\s*\d+(-\d+)?/gi, '').replace(/^,|,$/g, '').trim();
+      // Tambahkan desil baru ke keterangan
+      if (desilValue) {
+        keteranganValue = keteranganValue ? `${keteranganValue}, ${desilValue}` : desilValue;
+      }
+
+      // 1. Update penduduk yang dipilih
       const res = await fetch('/api/penduduk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -185,37 +195,43 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
           bantuan: updateBantuan,
           bpjs: updateBPJS,
           desil: desilValue,
+          keterangan: keteranganValue || null,
         }),
       });
 
       if (res.ok) {
-        // Auto-propagate ke anggota KK jika kepala keluarga
-        if (updateAnggotaToo && updateTarget.statusKeluarga === 'KEPALA KELUARGA') {
-          const allPenduduk = await fetch('/api/penduduk').then(r => r.json());
-          const anggota = allPenduduk.filter(
-            (p: Penduduk) =>
-              p.noKK === updateTarget.noKK &&
-              p.id !== updateTarget.id &&
-              p.statusKeluarga !== 'KEPALA KELUARGA',
-          );
+        // 2. Otomatis update semua anggota KK dengan data yang sama
+        const allPenduduk = await fetch('/api/penduduk').then(r => r.json());
+        const anggota = allPenduduk.filter(
+          (p: Penduduk) =>
+            p.noKK === updateTarget.noKK &&
+            p.id !== updateTarget.id,
+        );
 
-          for (const a of anggota) {
-            await fetch('/api/penduduk', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: a.id,
-                bantuan: updateBantuan,
-                bpjs: updateBPJS,
-                desil: desilValue,
-              }),
-            });
+        let updatedCount = 0;
+        for (const a of anggota) {
+          // Hitung keterangan untuk anggota (hapus desil lama, tambah desil baru)
+          let ketAnggota = a.keterangan || '';
+          ketAnggota = ketAnggota.replace(/,?\s*DESIL\s*\d+(-\d+)?/gi, '').replace(/^,|,$/g, '').trim();
+          if (desilValue) {
+            ketAnggota = ketAnggota ? `${ketAnggota}, ${desilValue}` : desilValue;
           }
+
+          const aRes = await fetch('/api/penduduk', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: a.id,
+              bantuan: updateBantuan,
+              bpjs: updateBPJS,
+              desil: desilValue,
+              keterangan: ketAnggota || null,
+            }),
+          });
+          if (aRes.ok) updatedCount++;
         }
 
-        const info = updateAnggotaToo && updateTarget.statusKeluarga === 'KEPALA KELUARGA'
-          ? ' + semua anggota KK'
-          : '';
+        const info = updatedCount > 0 ? ` + ${updatedCount} anggota KK` : '';
         toast.success(`Data bantuan berhasil diupdate${info}`);
         setShowUpdateDialog(false);
         fetchPenduduk();
@@ -512,19 +528,13 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
                 </Select>
               </div>
 
-              {/* Auto-propagate toggle */}
-              {updateTarget.statusKeluarga === 'KEPALA KELUARGA' && (
-                <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
-                  <Checkbox
-                    id="anggota-too"
-                    checked={updateAnggotaToo}
-                    onCheckedChange={(v) => setUpdateAnggotaToo(v === true)}
-                  />
-                  <label htmlFor="anggota-too" className="text-xs text-blue-800 cursor-pointer">
-                    Terapkan juga ke semua anggota KK ({kkGroups.find(g => g.noKK === updateTarget.noKK)?.anggota.length || 0} anggota)
-                  </label>
-                </div>
-              )}
+              {/* Info auto-propagate */}
+              <div className="flex items-center gap-2 bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                <CheckCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                <p className="text-[11px] text-emerald-800">
+                  Desil akan otomatis disimpan di <strong>keterangan</strong> dan diterapkan ke <strong>semua anggota KK</strong> ({kkGroups.find(g => g.noKK === updateTarget.noKK)?.anggota.length || 0} anggota)
+                </p>
+              </div>
 
               {/* Action buttons */}
               <div className="flex gap-2 pt-2">
