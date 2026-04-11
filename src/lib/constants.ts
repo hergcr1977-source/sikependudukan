@@ -1,7 +1,5 @@
 export const ALAMAT = 'KP. CEMPLANG, KELURAHAN SUKAMAJU, KECAMATAN CIBUNGBULANG, KABUPATEN BOGOR, PROVINSI JAWA BARAT, KODE POS 16630';
 
-export const ALAMAT_LENGKAP_DEFAULT = 'KP. CEMPLANG, RT.001 RW.002, KELURAHAN/DESA SUKAMAJU, KECAMATAN CIBUNGBULANG, KABUPATEN/KOTA BOGOR, PROVINSI JAWA BARAT';
-
 export const ALAMAT_DEFAULT = 'KP. CEMPLANG';
 export const RT_DEFAULT = '001';
 export const RW_DEFAULT = '002';
@@ -9,18 +7,6 @@ export const KELURAHAN_DEFAULT = 'SUKAMAJU';
 export const KECAMATAN_DEFAULT = 'CIBUNGBULANG';
 export const KABUPATEN_DEFAULT = 'BOGOR';
 export const PROVINSI_DEFAULT = 'JAWA BARAT';
-
-export function generateAlamatLengkap(d?: {
-  alamat?: string | null;
-  rt?: string | null;
-  rw?: string | null;
-  kelurahan?: string | null;
-  kecamatan?: string | null;
-  kabupaten?: string | null;
-  provinsi?: string | null;
-}): string {
-  return `${d?.alamat || ALAMAT_DEFAULT}, RT.${d?.rt || RT_DEFAULT} RW.${d?.rw || RW_DEFAULT}, KELURAHAN/DESA ${d?.kelurahan || KELURAHAN_DEFAULT}, KECAMATAN ${d?.kecamatan || KECAMATAN_DEFAULT}, KABUPATEN/KOTA ${d?.kabupaten || KABUPATEN_DEFAULT}, PROVINSI ${d?.provinsi || PROVINSI_DEFAULT}`;
-}
 
 export const JENIS_KELAMIN = ['LAKI-LAKI', 'PEREMPUAN'] as const;
 

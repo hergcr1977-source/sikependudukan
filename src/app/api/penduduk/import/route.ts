@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { toUpperCase } from '@/lib/utils-kependudukan';
 import {
-  ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
+  ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
   KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
-  generateAlamatLengkap,
 } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
@@ -117,7 +116,7 @@ export async function POST(request: NextRequest) {
     let dateParseFails = 0;
     const errors: string[] = [];
     const seenNiks = new Set<string>();
-    const alamatDefault = ALAMAT_LENGKAP_DEFAULT || generateAlamatLengkap();
+
 
     for (let i = headerIdx + 1; i < rows.length; i++) {
       const row = rows[i];
@@ -216,7 +215,7 @@ export async function POST(request: NextRequest) {
           alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
           kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
           kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
-          alamatLengkap: alamatDefault, keterangan: r[15],
+          keterangan: r[15],
         })),
         skipDuplicates: true,
       });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
-import { generateAlamatLengkap } from '@/lib/constants';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       tempatLahir, tanggalLahir, agama, pendidikan, pekerjaan,
       statusPerkawinan, kewarganegaraan, namaAyah, namaIbu,
       namaPanggilan, noHP, punyaKTP, bantuan, bpjs, desil,
-      alamat, rt, rw, kelurahan, kecamatan, kabupaten, provinsi, alamatLengkap, keterangan,
+      alamat, rt, rw, kelurahan, kecamatan, kabupaten, provinsi, keterangan,
     } = body;
 
     if (!validateNoKK(noKK)) {
@@ -101,7 +101,6 @@ export async function POST(request: NextRequest) {
         kecamatan: toUpperCase(kecamatan || 'CIBUNGBULANG'),
         kabupaten: toUpperCase(kabupaten || 'BOGOR'),
         provinsi: toUpperCase(provinsi || 'JAWA BARAT'),
-        alamatLengkap: alamatLengkap || generateAlamatLengkap({ alamat, rt, rw, kelurahan, kecamatan, kabupaten, provinsi }),
         keterangan: finalKeterangan,
       },
     });
@@ -160,23 +159,6 @@ export async function PUT(request: NextRequest) {
     if (data.kecamatan !== undefined) updateData.kecamatan = toUpperCase(data.kecamatan || 'CIBUNGBULANG');
     if (data.kabupaten !== undefined) updateData.kabupaten = toUpperCase(data.kabupaten || 'BOGOR');
     if (data.provinsi !== undefined) updateData.provinsi = toUpperCase(data.provinsi || 'JAWA BARAT');
-    // Auto-regenerate alamatLengkap jika ada perubahan field alamat
-    const addressFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
-    if (addressFields.some(f => data[f] !== undefined)) {
-      const addrData = {
-        alamat: data.alamat || (updateData.alamat as string),
-        rt: data.rt || (updateData.rt as string),
-        rw: data.rw || (updateData.rw as string),
-        kelurahan: data.kelurahan || (updateData.kelurahan as string),
-        kecamatan: data.kecamatan || (updateData.kecamatan as string),
-        kabupaten: data.kabupaten || (updateData.kabupaten as string),
-        provinsi: data.provinsi || (updateData.provinsi as string),
-      };
-      updateData.alamatLengkap = generateAlamatLengkap(addrData);
-    }
-    if (data.alamatLengkap !== undefined && !addressFields.some(f => data[f] !== undefined)) {
-      updateData.alamatLengkap = data.alamatLengkap || null;
-    }
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
     let penduduk;

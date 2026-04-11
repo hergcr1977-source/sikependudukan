@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { toUpperCase } from '@/lib/utils-kependudukan';
 import {
-  ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
+  ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
   KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
 } from '@/lib/constants';
 
@@ -58,7 +57,6 @@ export async function GET() {
         kecamatan: KECAMATAN_DEFAULT,
         kabupaten: KABUPATEN_DEFAULT,
         provinsi: PROVINSI_DEFAULT,
-        alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
         keterangan: null,
       },
     });
@@ -71,61 +69,9 @@ export async function GET() {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     result.tests.insertTest = { status: 'FAIL', error: msg };
-
-    // Jika gagal karena alamatLengkap, coba tanpa alamatLengkap
-    try {
-      const created2 = await db.penduduk.create({
-        data: {
-          noKK: testNoKK,
-          nik: testNIK,
-          namaLengkap: 'TEST IMPORT DIAG',
-          jenisKelamin: 'LAKI-LAKI',
-          statusKeluarga: 'KEPALA KELUARGA',
-          tempatLahir: 'TEST',
-          tanggalLahir: new Date('2000-01-01'),
-          agama: 'ISLAM',
-          pendidikan: 'SD/SEDERAJAT',
-          pekerjaan: 'BELUM/TIDAK BEKERJA',
-          statusPerkawinan: 'BELUM MENIKAH',
-          kewarganegaraan: 'WNI',
-          namaAyah: 'TEST',
-          namaIbu: 'TEST',
-          punyaKTP: 'BELUM',
-          bantuan: '[]',
-        },
-      });
-      await db.penduduk.delete({ where: { id: created2.id } });
-      result.tests.insertMinimal = {
-        status: 'OK',
-        message: 'Insert minimal (tanpa alamatLengkap dll) berhasil - ada kolom yang hilang di DB!',
-      };
-    } catch (e2: unknown) {
-      const msg2 = e2 instanceof Error ? e2.message : String(e2);
-      result.tests.insertMinimal = { status: 'FAIL', error: msg2 };
-    }
   }
 
-  // Test 3: Cek kolom yang ada di tabel Penduduk via Prisma introspection
-  try {
-    // Coba akses berbagai field untuk cek apakah kolomnya ada
-    const sample = await db.penduduk.findFirst({
-      select: {
-        id: true, noKK: true, nik: true, namaLengkap: true,
-        alamatLengkap: true, desil: true, bpjs: true, bantuan: true,
-        namaPanggilan: true, noHP: true, punyaKTP: true,
-        alamat: true, rt: true, rw: true, kelurahan: true,
-        kecamatan: true, kabupaten: true, provinsi: true, keterangan: true,
-      },
-    });
-    result.tests.schemaCheck = {
-      status: sample ? 'OK (all columns exist)' : 'OK (table empty, schema assumed correct)',
-    };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    result.tests.schemaCheck = { status: 'FAIL', error: msg };
-  }
-
-  // Test 4: PendudukSementara
+  // Test 3: PendudukSementara
   try {
     const countS = await db.pendudukSementara.count();
     result.tests.sementaraConnection = { status: 'OK', count: countS };

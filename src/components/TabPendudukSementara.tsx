@@ -38,7 +38,7 @@ import {
   JENIS_KELAMIN, STATUS_PERKAWINAN, STATUS_KELUARGA,
   BANTUAN_OPTIONS, BPJS_OPTIONS,
   ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT,
-  KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT, generateAlamatLengkap,
+  KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
 } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
 
@@ -64,7 +64,6 @@ interface PendudukSementara {
   alamatAsal: string;
   bantuan: string;
   bpjs: string | null;
-  alamatLengkap: string | null;
   alamat: string;
   rt: string;
   rw: string;
@@ -111,7 +110,6 @@ const defaultFormData = {
   kecamatan: KECAMATAN_DEFAULT,
   kabupaten: KABUPATEN_DEFAULT,
   provinsi: PROVINSI_DEFAULT,
-  alamatLengkap: generateAlamatLengkap(),
   tanggalMasuk: '',
   tanggalKeluar: '',
   keterangan: '',
@@ -219,7 +217,6 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       alamatAsal: p.alamatAsal,
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
-      alamatLengkap: p.alamatLengkap || generateAlamatLengkap(p),
       alamat: p.alamat || ALAMAT_DEFAULT,
       rt: p.rt || RT_DEFAULT,
       rw: p.rw || RW_DEFAULT,
@@ -317,14 +314,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
   };
 
   const updateField = (field: string, value: string | string[]) => {
-    setFormData(prev => {
-      const next = { ...prev, [field]: value };
-      const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
-      if (addrFields.includes(field)) {
-        next.alamatLengkap = generateAlamatLengkap(next);
-      }
-      return next;
-    });
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const toggleBantuan = (item: string) => {
@@ -605,10 +595,6 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
               <Input className="text-sm uppercase" value={formData.alamatAsal} onChange={e => updateField('alamatAsal', e.target.value.toUpperCase())} />
             </div>
 
-            {/* Alamat Lengkap - Input Terpisah */}
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-emerald-700">Alamat Lengkap</Label>
-            </div>
             <div className="space-y-1">
               <Label className="text-xs">Alamat</Label>
               <Input className="text-sm uppercase" value={formData.alamat} onChange={e => updateField('alamat', e.target.value.toUpperCase())} />
@@ -641,10 +627,6 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
                 <Input className="text-sm uppercase" value={formData.provinsi} onChange={e => updateField('provinsi', e.target.value.toUpperCase())} />
               </div>
             </div>
-            <div className="bg-gray-50 rounded p-2">
-              <p className="text-[10px] text-muted-foreground">Preview: <span className="font-medium">{formData.alamatLengkap}</span></p>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Tanggal Masuk *</Label>
@@ -778,9 +760,6 @@ function SementaraRow({
         </p>
         {penduduk.alamatAsal && (
           <p className="text-[10px] text-muted-foreground">{penduduk.alamatAsal}</p>
-        )}
-        {penduduk.alamatLengkap && (
-          <p className="text-[10px] text-muted-foreground">{penduduk.alamatLengkap}</p>
         )}
         {isKK && penduduk.bantuan && penduduk.bantuan !== '[]' && (() => {
           const arr = JSON.parse(penduduk.bantuan);

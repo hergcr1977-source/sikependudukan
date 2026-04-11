@@ -37,7 +37,7 @@ import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
   BPJS_OPTIONS,
   ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT, KELURAHAN_DEFAULT,
-  KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT, generateAlamatLengkap,
+  KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
   STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
 import { hitungUmur, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
@@ -63,7 +63,6 @@ interface Penduduk {
   punyaKTP: string;
   bantuan: string;
   bpjs: string | null;
-  alamatLengkap: string | null;
   alamat: string;
   rt: string;
   rw: string;
@@ -107,7 +106,6 @@ const defaultFormData = {
   kecamatan: KECAMATAN_DEFAULT,
   kabupaten: KABUPATEN_DEFAULT,
   provinsi: PROVINSI_DEFAULT,
-  alamatLengkap: generateAlamatLengkap(),
   keterangan: '',
 };
 
@@ -229,7 +227,6 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       noKK: formData.noKK || '',
       statusKeluarga: '',
       bantuan: [],
-      alamatLengkap: formData.alamatLengkap || generateAlamatLengkap(formData),
       alamat: formData.alamat || ALAMAT_DEFAULT,
       rt: formData.rt || RT_DEFAULT,
       rw: formData.rw || RW_DEFAULT,
@@ -306,7 +303,6 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       punyaKTP: p.punyaKTP,
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
-      alamatLengkap: p.alamatLengkap || generateAlamatLengkap(p),
       alamat: p.alamat || ALAMAT_DEFAULT,
       rt: p.rt || RT_DEFAULT,
       rw: p.rw || RW_DEFAULT,
@@ -521,21 +517,15 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
   const updateField = (field: string, value: string | string[]) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
-      // Auto-regenerate alamatLengkap jika field alamat berubah
-      const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
-      if (addrFields.includes(field)) {
-        next.alamatLengkap = generateAlamatLengkap(next);
-        // Auto-propagate ke semua anggota (mode KK_BARU)
-        if (!editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
-          setAnggotaList(prev => prev.map(a => ({ ...a, [field]: value, alamatLengkap: generateAlamatLengkap({ ...a, [field]: value }) })));
+      // Auto-propagate ke semua anggota (mode KK_BARU)
+      if (!editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
+        const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
+        if (addrFields.includes(field)) {
+          setAnggotaList(prev => prev.map(a => ({ ...a, [field]: value })));
         }
       }
       return next;
     });
-    // Auto-propagate alamatLengkap dari KK head ke semua anggota (mode KK_BARU)
-    if (field === 'alamatLengkap' && !editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
-      setAnggotaList(prev => prev.map(a => ({ ...a, alamatLengkap: value as string })));
-    }
     // Auto-propagate keterangan dari KK head ke semua anggota (mode KK_BARU)
     if (field === 'keterangan' && !editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
       setAnggotaList(prev => prev.map(a => ({ ...a, keterangan: value as string })));
@@ -553,7 +543,6 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
           kecamatan: group.kepala.kecamatan || KECAMATAN_DEFAULT,
           kabupaten: group.kepala.kabupaten || KABUPATEN_DEFAULT,
           provinsi: group.kepala.provinsi || PROVINSI_DEFAULT,
-          alamatLengkap: group.kepala.alamatLengkap || generateAlamatLengkap(group.kepala),
         }));
       }
     }
@@ -951,10 +940,6 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
               </div>
             </div>
 
-            {/* Alamat Lengkap - Input Terpisah */}
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-emerald-700">Alamat Lengkap</Label>
-            </div>
             <div className="space-y-1">
               <Label className="text-xs">Alamat</Label>
               <Input
@@ -1017,10 +1002,6 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
                 />
               </div>
             </div>
-            <div className="bg-gray-50 rounded p-2">
-              <p className="text-[10px] text-muted-foreground">Preview: <span className="font-medium">{formData.alamatLengkap}</span></p>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">BPJS</Label>
@@ -1457,9 +1438,6 @@ function PendudukRow({
         <p className="text-[10px] text-muted-foreground mt-0.5">
           NIK: {penduduk.nik} · {penduduk.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'} · Umur: {umur.label}
         </p>
-        {penduduk.alamatLengkap && (
-          <p className="text-[10px] text-muted-foreground">{penduduk.alamatLengkap}</p>
-        )}
         {/* Bantuan, BPJS, Keterangan */}
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
           {bantuanArr.length > 0 && (

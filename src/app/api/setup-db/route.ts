@@ -37,7 +37,6 @@ export async function GET() {
     // Penduduk columns
     const pendudukMigrations = [
       ['desil', 'TEXT'],
-      ['alamatLengkap', 'TEXT'],
       ['alamat', 'TEXT', "'KP. CEMPLANG'"],
       ['rt', 'TEXT', "'001'"],
       ['rw', 'TEXT', "'002'"],
@@ -60,7 +59,6 @@ export async function GET() {
 
     // PendudukSementara columns
     const sementaraMigrations = [
-      ['alamatLengkap', 'TEXT'],
       ['alamat', 'TEXT', "'KP. CEMPLANG'"],
       ['rt', 'TEXT', "'001'"],
       ['rw', 'TEXT', "'002'"],
@@ -78,6 +76,20 @@ export async function GET() {
     for (const [col, type, defaultVal] of sementaraMigrations) {
       const result = await ensureColumn('PendudukSementara', col, type, defaultVal);
       if (result) results.push(result);
+    }
+
+    // Drop alamatLengkap columns (no longer used)
+    for (const tableName of ['Penduduk', 'PendudukSementara']) {
+      try {
+        const columns = await getColumns(tableName);
+        if (columns.includes('alamatlengkap')) {
+          await db.$executeRawUnsafe(`ALTER TABLE "${tableName}" DROP COLUMN "alamatLengkap"`);
+          results.push(`Dropped ${tableName}.alamatLengkap`);
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        results.push(`Warning: Could not drop alamatLengkap from ${tableName}: ${msg.substring(0, 100)}`);
+      }
     }
 
     // LaporanBulanan columns

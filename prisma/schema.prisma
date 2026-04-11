@@ -36,7 +36,6 @@ model Penduduk {
   kecamatan        String    @default("CIBUNGBULANG")
   kabupaten        String    @default("BOGOR")
   provinsi         String    @default("JAWA BARAT")
-  alamatLengkap    String?
   keterangan       String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -71,7 +70,6 @@ model PendudukSementara {
   kecamatan         String    @default("CIBUNGBULANG")
   kabupaten         String    @default("BOGOR")
   provinsi          String    @default("JAWA BARAT")
-  alamatLengkap     String?
   tanggalMasuk      DateTime
   tanggalKeluar     DateTime?
   keterangan        String?

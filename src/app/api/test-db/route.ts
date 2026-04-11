@@ -88,7 +88,7 @@ export async function GET() {
     'statusPerkawinan', 'kewarganegaraan', 'namaAyah', 'namaIbu', 'namaPanggilan',
     'noHP', 'punyaKTP', 'bantuan', 'bpjs', 'desil',
     'alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi',
-    'alamatLengkap', 'keterangan', 'createdAt', 'updatedAt'
+    'keterangan', 'createdAt', 'updatedAt'
   ];
   if (result.pendudukColumns) {
     const actualColNames = result.pendudukColumns.map(c => c.name.toLowerCase());
