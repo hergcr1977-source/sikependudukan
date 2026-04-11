@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     let skipped = 0;
     let currentNoKK = '';
     const errors: string[] = [];
-    const today = new Date().toISOString().split('T')[0];
+    const nowDate = new Date();
 
     for (let i = 2; i < rows.length; i++) {
       const row = rows[i];
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
             kabupaten: KABUPATEN_DEFAULT,
             provinsi: PROVINSI_DEFAULT,
             alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
-            tanggalMasuk: new Date(today),
+            tanggalMasuk: nowDate,
             tanggalKeluar: null,
             keterangan: keterangan || null,
           },
