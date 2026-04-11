@@ -486,18 +486,23 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       if (res.ok) {
         const data = await res.json();
         toast.success(data.message);
-        if (data.skipped > 0) {
+        if (data.dateParseFails && data.dateParseFails > 0) {
+          toast.error(`⚠ ${data.dateParseFails} tanggal lahir tidak valid! Periksa format kolom Tgl Lahir di Excel.`, { duration: 8000 });
+        }
+        if (data.skipped > 0 && !data.dateParseFails) {
           toast.info(`${data.skipped} data dilewati (duplikat atau tidak valid)`);
         }
         if (data.errors?.length > 0) {
-          toast.warning(`${data.errors.length} data gagal disimpan`);
+          const sampleErrors = data.errors.slice(0, 3).join('; ');
+          toast.warning(`⚠ ${data.errors.length} data gagal: ${sampleErrors}`, { duration: 10000 });
           console.warn('Import errors:', data.errors);
         }
         fetchPenduduk();
         setShowImport(false);
       } else {
         const err = await res.json();
-        toast.error(err.error || 'Gagal mengimpor');
+        toast.error(`Gagal mengimpor: ${err.error || 'Unknown error'}`, { duration: 8000 });
+        console.error('Import failed:', err);
       }
     } catch {
       toast.error('Gagal mengimpor file');
