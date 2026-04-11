@@ -4,6 +4,7 @@ import { toUpperCase } from '@/lib/utils-kependudukan';
 import {
   ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
   KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
+  generateAlamatLengkap,
 } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 
@@ -89,68 +90,13 @@ function detectColumns(headerRow: any[]): Record<string, number> {
   return cols;
 }
 
-// ========== SQL ESCAPE (PostgreSQL-safe) ==========
-function esc(val: string | null | undefined): string {
-  if (val === null || val === undefined) return 'NULL';
-  return "'" + String(val).replace(/'/g, "''") + "'";
-}
-
-async function getDbColumns(tableName: string): Promise<string[]> {
-  try {
-    const cols = await db.$queryRawUnsafe(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = lower('${tableName}') ORDER BY ordinal_position`
-    );
-    return (cols as Array<{ column_name: string }>).map(c => c.column_name);
-  } catch (e) {
-    console.error(`[getDbColumns] Failed for ${tableName}:`, e);
-    return [];
-  }
-}
-
-async function addMissingColumn(table: string, col: string, def: string): Promise<boolean> {
-  try {
-    await db.$executeRawUnsafe(
-      `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${col}" TEXT${def ? ` DEFAULT ${esc(def)}` : ''};`
-    );
-    return true;
-  } catch (e) {
-    console.warn(`[addMissingColumn] Failed ${table}.${col}:`, e);
-    return false;
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
 
-    // ===== STEP 1: Get actual columns from DB (PostgreSQL) =====
-    let dbColumns = await getDbColumns('PendudukSementara');
-    console.log(`[Import Sementara] DB columns (${dbColumns.length}): ${dbColumns.join(', ')}`);
-
-    if (dbColumns.length === 0) {
-      return NextResponse.json({ error: 'Gagal membaca struktur tabel PendudukSementara di database' }, { status: 500 });
-    }
-
-    // ===== STEP 2: Auto-migrate missing columns =====
-    const requiredColumns: Record<string, string> = {
-      alamat: 'KP. CEMPLANG', rt: '001', rw: '002',
-      kelurahan: 'SUKAMAJU', kecamatan: 'CIBUNGBULANG',
-      kabupaten: 'BOGOR', provinsi: 'JAWA BARAT',
-      namaPanggilan: '', noHP: '', bantuan: '[]', bpjs: '',
-      alamatLengkap: '', keterangan: '', tanggalMasuk: '', tanggalKeluar: '',
-      statusKeterangan: '', alamatAsal: '',
-    };
-
-    for (const [col, def] of Object.entries(requiredColumns)) {
-      if (!dbColumns.includes(col)) {
-        const ok = await addMissingColumn('PendudukSementara', col, def);
-        if (ok) dbColumns.push(col);
-      }
-    }
-
-    // ===== STEP 3: Parse Excel =====
+    // ===== STEP 1: Parse Excel =====
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -173,7 +119,9 @@ export async function POST(request: NextRequest) {
       PANGGILAN: detected.PANGGILAN ?? 15, KETERANGAN: detected.KETERANGAN ?? 16,
     };
 
-    // ===== STEP 4: Pre-fetch existing NIKs =====
+    console.log(`[Import Sementara] Detected columns:`, COL);
+
+    // ===== STEP 2: Pre-fetch existing NIKs =====
     const existingNIKs = new Set(
       (await db.pendudukSementara.findMany({ select: { nik: true } })).map(p => p.nik)
     );
@@ -185,7 +133,7 @@ export async function POST(request: NextRequest) {
     const errors: string[] = [];
     let dateParseFails = 0;
     const startRow = headerIdx + 1;
-    const nowDate = new Date().toISOString().split('T')[0];
+    const nowDate = new Date();
 
     for (let i = startRow; i < rows.length; i++) {
       const row = rows[i];
@@ -214,14 +162,17 @@ export async function POST(request: NextRequest) {
       const namaPanggilan = get(COL.PANGGILAN);
       const keterangan = get(COL.KETERANGAN);
 
+      // Skip empty rows
       if (!namaLengkap) continue;
       if (!nik && !jenisKelamin && !tempatLahir && !statusKeluarga && !tanggalLahir) continue;
 
+      // Track current NoKK
       if (noKKRaw) currentNoKK = noKKRaw;
       if (!currentNoKK) { skipped++; continue; }
       if (!nik) { skipped++; continue; }
       if (existingNIKs.has(nik)) { skipped++; continue; }
 
+      // Validate tanggal lahir
       if (!tanggalLahir) {
         dateParseFails++;
         errors.push(`Baris ${i + 1}: ${namaLengkap} - tanggal tidak valid`);
@@ -232,62 +183,49 @@ export async function POST(request: NextRequest) {
       existingNIKs.add(nik);
       const statusKeterangan = normalizeStatus(statusWarga);
 
-      // Build dynamic INSERT using only columns that exist in DB (PostgreSQL)
-      const insertCols: string[] = [];
-      const insertValues: string[] = [];
-
-      function addCol(colName: string, val: string) {
-        if (dbColumns.includes(colName)) {
-          insertCols.push(`"${colName}"`);
-          insertValues.push(val);
-        }
-      }
-
-      addCol('noKK', esc(currentNoKK));
-      addCol('nik', esc(nik));
-      addCol('namaLengkap', esc(toUpperCase(namaLengkap) || 'TIDAK DIKETAHUI'));
-      addCol('jenisKelamin', esc(toUpperCase(jenisKelamin) || 'LAKI-LAKI'));
-      addCol('statusKeluarga', esc(toUpperCase(statusKeluarga) || 'KEPALA KELUARGA'));
-      addCol('tempatLahir', esc(toUpperCase(tempatLahir) || '-'));
-      addCol('tanggalLahir', esc(tanggalLahir));
-      addCol('agama', esc(toUpperCase(agama) || 'ISLAM'));
-      addCol('pendidikan', esc(toUpperCase(pendidikan) || 'TIDAK/BELUM SEKOLAH'));
-      addCol('pekerjaan', esc(toUpperCase(pekerjaan) || 'BELUM/TIDAK BEKERJA'));
-      addCol('statusPerkawinan', esc(toUpperCase(statusPerkawinan) || 'BELUM MENIKAH'));
-      addCol('kewarganegaraan', esc(toUpperCase(kewarganegaraan) || 'WNI'));
-      addCol('namaAyah', esc(toUpperCase(namaAyah) || '-'));
-      addCol('namaIbu', esc(toUpperCase(namaIbu) || '-'));
-      addCol('namaPanggilan', namaPanggilan ? esc(toUpperCase(namaPanggilan)) : 'NULL');
-      addCol('noHP', 'NULL');
-      addCol('statusKeterangan', esc(statusKeterangan));
-      addCol('alamatAsal', esc(keterangan || ''));
-      addCol('bantuan', esc('[]'));
-      addCol('bpjs', 'NULL');
-      addCol('tanggalMasuk', esc(nowDate));
-      addCol('alamat', esc(ALAMAT_DEFAULT));
-      addCol('rt', esc(RT_DEFAULT));
-      addCol('rw', esc(RW_DEFAULT));
-      addCol('kelurahan', esc(KELURAHAN_DEFAULT));
-      addCol('kecamatan', esc(KECAMATAN_DEFAULT));
-      addCol('kabupaten', esc(KABUPATEN_DEFAULT));
-      addCol('provinsi', esc(PROVINSI_DEFAULT));
-      addCol('alamatLengkap', esc(ALAMAT_LENGKAP_DEFAULT));
-      addCol('keterangan', keterangan ? esc(keterangan) : 'NULL');
-
-      if (insertCols.length === 0) {
-        errors.push(`Baris ${i + 1}: ${namaLengkap} - tidak ada kolom valid di database`);
-        continue;
-      }
-
-      const sql = `INSERT INTO "PendudukSementara" (${insertCols.join(', ')}) VALUES (${insertValues.join(', ')});`;
-
+      // ===== Use Prisma ORM (same as manual POST route) =====
       try {
-        await db.$executeRawUnsafe(sql);
+        await db.pendudukSementara.create({
+          data: {
+            noKK: currentNoKK,
+            nik: nik,
+            namaLengkap: toUpperCase(namaLengkap) || 'TIDAK DIKETAHUI',
+            jenisKelamin: toUpperCase(jenisKelamin) || 'LAKI-LAKI',
+            statusKeluarga: toUpperCase(statusKeluarga) || 'KEPALA KELUARGA',
+            tempatLahir: toUpperCase(tempatLahir) || '-',
+            tanggalLahir: new Date(tanggalLahir),
+            agama: toUpperCase(agama) || 'ISLAM',
+            pendidikan: toUpperCase(pendidikan) || 'TIDAK/BELUM SEKOLAH',
+            pekerjaan: toUpperCase(pekerjaan) || 'BELUM/TIDAK BEKERJA',
+            statusPerkawinan: toUpperCase(statusPerkawinan) || 'BELUM MENIKAH',
+            kewarganegaraan: toUpperCase(kewarganegaraan) || 'WNI',
+            namaAyah: toUpperCase(namaAyah) || '-',
+            namaIbu: toUpperCase(namaIbu) || '-',
+            namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
+            noHP: null,
+            statusKeterangan: statusKeterangan,
+            alamatAsal: keterangan || '-',
+            bantuan: '[]',
+            bpjs: null,
+            alamat: ALAMAT_DEFAULT,
+            rt: RT_DEFAULT,
+            rw: RW_DEFAULT,
+            kelurahan: KELURAHAN_DEFAULT,
+            kecamatan: KECAMATAN_DEFAULT,
+            kabupaten: KABUPATEN_DEFAULT,
+            provinsi: PROVINSI_DEFAULT,
+            alamatLengkap: ALAMAT_LENGKAP_DEFAULT || generateAlamatLengkap(),
+            tanggalMasuk: nowDate,
+            tanggalKeluar: null,
+            keterangan: keterangan || null,
+          },
+        });
         imported++;
+        console.log(`[Import Sementara] OK row ${i + 1}: ${namaLengkap} (NIK: ${nik})`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Import Sementara] SQL Error row ${i + 1} (${namaLengkap}):`, msg, '\nSQL:', sql.substring(0, 300));
-        errors.push(`Baris ${i + 1}: ${namaLengkap} - ${msg.substring(0, 100)}`);
+        console.error(`[Import Sementara] Error row ${i + 1} (${namaLengkap}):`, msg);
+        errors.push(`Baris ${i + 1}: ${namaLengkap} - ${msg.substring(0, 150)}`);
       }
     }
 
@@ -298,7 +236,6 @@ export async function POST(request: NextRequest) {
       imported,
       skipped,
       dateParseFails: dateParseFails > 0 ? dateParseFails : undefined,
-      dbColumns,
       errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
     });
   } catch (error) {
