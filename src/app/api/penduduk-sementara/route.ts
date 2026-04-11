@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       tempatLahir, tanggalLahir, agama, pendidikan, pekerjaan,
       statusPerkawinan, kewarganegaraan, namaAyah, namaIbu,
       namaPanggilan, noHP, statusKeterangan, alamatAsal,
-      bantuan, bpjs, tanggalMasuk, tanggalKeluar, keterangan,
+      bantuan, bpjs, alamatLengkap, tanggalMasuk, tanggalKeluar, keterangan,
     } = body;
 
     // Validasi NIK dan NoKK
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
         alamatAsal: toUpperCase(alamatAsal),
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs ? bpjs.toUpperCase() : null,
+        alamatLengkap: alamatLengkap || null,
         tanggalMasuk: new Date(tanggalMasuk),
         tanggalKeluar: tanggalKeluar ? new Date(tanggalKeluar) : null,
         keterangan: keterangan || null,
@@ -146,6 +147,7 @@ export async function PUT(request: NextRequest) {
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
     if (data.bantuan !== undefined) updateData.bantuan = JSON.stringify(data.bantuan);
     if (data.bpjs !== undefined) updateData.bpjs = data.bpjs ? data.bpjs.toUpperCase() : null;
+    if (data.alamatLengkap !== undefined) updateData.alamatLengkap = data.alamatLengkap || null;
 
     const result = await db.pendudukSementara.update({
       where: { id },

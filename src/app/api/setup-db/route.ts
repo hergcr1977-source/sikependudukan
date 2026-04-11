@@ -5,28 +5,31 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Cek apakah kolom desil sudah ada di database Penduduk
+    // Migration untuk Penduduk
     const result = await db.$queryRawUnsafe('PRAGMA table_info(Penduduk)');
     const columns = result as Array<{ name: string }>;
-    const hasDesil = columns.some(col => col.name === 'desil');
-
-    if (!hasDesil) {
+    if (!columns.some(col => col.name === 'desil')) {
       await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN desil TEXT;');
     }
+    if (!columns.some(col => col.name === 'alamatLengkap')) {
+      await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN alamatLengkap TEXT;');
+    }
 
-    // Cek juga PendudukSementara (tabel lain yang punya field bantuan)
+    // Migration untuk PendudukSementara
     try {
       const result2 = await db.$queryRawUnsafe('PRAGMA table_info(PendudukSementara)');
       const columns2 = result2 as Array<{ name: string }>;
-      const hasDesil2 = columns2.some(col => col.name === 'desil');
-      if (!hasDesil2) {
+      if (!columns2.some(col => col.name === 'desil')) {
         await db.$executeRawUnsafe('ALTER TABLE PendudukSementara ADD COLUMN desil TEXT;');
+      }
+      if (!columns2.some(col => col.name === 'alamatLengkap')) {
+        await db.$executeRawUnsafe('ALTER TABLE PendudukSementara ADD COLUMN alamatLengkap TEXT;');
       }
     } catch {
       // Tabel PendudukSementara mungkin belum ada, abaikan
     }
 
-    return NextResponse.json({ message: 'Database siap.', hasDesil: !hasDesil });
+    return NextResponse.json({ message: 'Database siap.' });
   } catch (error) {
     console.error('Migration error:', error);
     return NextResponse.json({

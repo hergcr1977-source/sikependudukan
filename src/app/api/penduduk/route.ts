@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       noKK, nik, namaLengkap, jenisKelamin, statusKeluarga,
       tempatLahir, tanggalLahir, agama, pendidikan, pekerjaan,
       statusPerkawinan, kewarganegaraan, namaAyah, namaIbu,
-      namaPanggilan, noHP, punyaKTP, bantuan, bpjs, desil, keterangan,
+      namaPanggilan, noHP, punyaKTP, bantuan, bpjs, desil, alamatLengkap, keterangan,
     } = body;
 
     if (!validateNoKK(noKK)) {
@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs || null,
         desil: desil || null,
+        alamatLengkap: alamatLengkap || null,
         keterangan: finalKeterangan,
       },
     });
@@ -142,6 +143,7 @@ export async function PUT(request: NextRequest) {
     if (data.bantuan !== undefined) updateData.bantuan = JSON.stringify(data.bantuan);
     if (data.bpjs !== undefined) updateData.bpjs = data.bpjs || null;
     if (data.desil !== undefined) updateData.desil = data.desil || null;
+    if (data.alamatLengkap !== undefined) updateData.alamatLengkap = data.alamatLengkap || null;
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
     let penduduk;

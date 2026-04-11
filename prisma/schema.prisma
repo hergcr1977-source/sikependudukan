@@ -29,6 +29,7 @@ model Penduduk {
   bantuan          String    @default("[]")
   bpjs             String?
   desil            String?
+  alamatLengkap    String?
   keterangan       String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -56,6 +57,7 @@ model PendudukSementara {
   alamatAsal        String
   bantuan           String    @default("[]")
   bpjs              String?
+  alamatLengkap     String?
   tanggalMasuk      DateTime
   tanggalKeluar     DateTime?
   keterangan        String?

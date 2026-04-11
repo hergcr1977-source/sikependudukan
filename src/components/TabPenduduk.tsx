@@ -35,7 +35,7 @@ import { Plus, Search, FileUp, Pencil, Trash2, ChevronDown, ChevronRight, Chevro
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
-  BPJS_OPTIONS,
+  BPJS_OPTIONS, ALAMAT_LENGKAP_DEFAULT,
   STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
 import { hitungUmur, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
@@ -61,6 +61,7 @@ interface Penduduk {
   punyaKTP: string;
   bantuan: string;
   bpjs: string | null;
+  alamatLengkap: string | null;
   keterangan: string | null;
 }
 
@@ -90,6 +91,7 @@ const defaultFormData = {
   punyaKTP: 'BELUM',
   bantuan: [] as string[],
   bpjs: '',
+  alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
   keterangan: '',
 };
 
@@ -200,6 +202,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       noKK: formData.noKK || '',
       statusKeluarga: '',
       bantuan: [],
+      alamatLengkap: formData.alamatLengkap || ALAMAT_LENGKAP_DEFAULT,
       kewarganegaraan: formData.kewarganegaraan || 'WNI',
       namaAyah: formData.namaAyah || '',
       namaIbu: formData.namaIbu || '',
@@ -269,6 +272,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       punyaKTP: p.punyaKTP,
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
+      alamatLengkap: p.alamatLengkap || ALAMAT_LENGKAP_DEFAULT,
       keterangan: p.keterangan || '',
     });
     setShowForm(true);
@@ -466,15 +470,22 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
 
   const updateField = (field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Auto-propagate alamatLengkap dari KK head ke semua anggota (mode KK_BARU)
+    if (field === 'alamatLengkap' && !editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
+      setAnggotaList(prev => prev.map(a => ({ ...a, alamatLengkap: value as string })));
+    }
     // Auto-propagate keterangan dari KK head ke semua anggota (mode KK_BARU)
     if (field === 'keterangan' && !editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
       setAnggotaList(prev => prev.map(a => ({ ...a, keterangan: value as string })));
     }
-    // Auto-fill keterangan dari KK head saat pilih KK (mode ANGGOTA)
+    // Auto-fill keterangan dan alamatLengkap dari KK head saat pilih KK (mode ANGGOTA)
     if (field === 'noKK' && !editingId && addMode === 'ANGGOTA' && value) {
       const group = kkGroups.find(g => g.noKK === value);
-      if (group?.kepala?.keterangan) {
-        setFormData(prev => ({ ...prev, keterangan: group.kepala.keterangan || '' }));
+      if (group?.kepala) {
+        setFormData(prev => ({ ...prev,
+          keterangan: group.kepala.keterangan || '',
+          alamatLengkap: group.kepala.alamatLengkap || ALAMAT_LENGKAP_DEFAULT,
+        }));
       }
     }
   };
@@ -871,6 +882,15 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
               </div>
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-xs">Alamat Lengkap</Label>
+              <Input
+                className="text-sm uppercase"
+                value={formData.alamatLengkap}
+                onChange={e => updateField('alamatLengkap', e.target.value.toUpperCase())}
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">BPJS</Label>
@@ -1240,6 +1260,9 @@ function PendudukRow({
         <p className="text-[10px] text-muted-foreground mt-0.5">
           NIK: {penduduk.nik} · {penduduk.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'} · Umur: {umur.label}
         </p>
+        {penduduk.alamatLengkap && (
+          <p className="text-[10px] text-muted-foreground">{penduduk.alamatLengkap}</p>
+        )}
         {/* Bantuan, BPJS, Keterangan */}
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
           {bantuanArr.length > 0 && (

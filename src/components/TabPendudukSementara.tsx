@@ -36,7 +36,7 @@ import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_KETERANGAN_SEMENTARA,
   JENIS_KELAMIN, STATUS_PERKAWINAN, STATUS_KELUARGA,
-  BANTUAN_OPTIONS, BPJS_OPTIONS,
+  BANTUAN_OPTIONS, BPJS_OPTIONS, ALAMAT_LENGKAP_DEFAULT,
 } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
 
@@ -62,6 +62,7 @@ interface PendudukSementara {
   alamatAsal: string;
   bantuan: string;
   bpjs: string | null;
+  alamatLengkap: string | null;
   tanggalMasuk: string;
   tanggalKeluar: string | null;
   keterangan: string | null;
@@ -94,6 +95,7 @@ const defaultFormData = {
   alamatAsal: '',
   bantuan: [] as string[],
   bpjs: '',
+  alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
   tanggalMasuk: '',
   tanggalKeluar: '',
   keterangan: '',
@@ -190,6 +192,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       alamatAsal: p.alamatAsal,
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
+      alamatLengkap: p.alamatLengkap || ALAMAT_LENGKAP_DEFAULT,
       tanggalMasuk: p.tanggalMasuk.split('T')[0],
       tanggalKeluar: p.tanggalKeluar ? p.tanggalKeluar.split('T')[0] : '',
       keterangan: p.keterangan || '',
@@ -550,6 +553,11 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
               <Input className="text-sm uppercase" value={formData.alamatAsal} onChange={e => updateField('alamatAsal', e.target.value.toUpperCase())} />
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-xs">Alamat Lengkap</Label>
+              <Input className="text-sm uppercase" value={formData.alamatLengkap} onChange={e => updateField('alamatLengkap', e.target.value.toUpperCase())} />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Tanggal Masuk *</Label>
@@ -683,6 +691,9 @@ function SementaraRow({
         </p>
         {penduduk.alamatAsal && (
           <p className="text-[10px] text-muted-foreground">{penduduk.alamatAsal}</p>
+        )}
+        {penduduk.alamatLengkap && (
+          <p className="text-[10px] text-muted-foreground">{penduduk.alamatLengkap}</p>
         )}
         {isKK && penduduk.bantuan && penduduk.bantuan !== '[]' && (() => {
           const arr = JSON.parse(penduduk.bantuan);
