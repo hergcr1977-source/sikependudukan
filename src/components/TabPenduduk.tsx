@@ -189,7 +189,18 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
         group.anggota.push(p);
       }
     }
-    setKKGroups(Array.from(map.values()));
+    const groups = Array.from(map.values());
+    // Urutkan KK berdasarkan nama kepala keluarga A-Z
+    groups.sort((a, b) => {
+      const nameA = a.kepala?.namaLengkap || '';
+      const nameB = b.kepala?.namaLengkap || '';
+      return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+    });
+    // Urutkan anggota dalam setiap KK A-Z
+    for (const group of groups) {
+      group.anggota.sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id', { sensitivity: 'base' }));
+    }
+    setKKGroups(groups);
   };
 
   useEffect(() => {
