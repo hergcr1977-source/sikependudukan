@@ -3,77 +3,92 @@ import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+async function getColumns(tableName: string): Promise<string[]> {
+  const result = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName.toLowerCase()}' ORDER BY ordinal_position`
+  );
+  return result.map(r => r.column_name);
+}
+
+async function addColumnIfMissing(tableName: string, column: string, type: string, defaultValue?: string) {
+  const columns = await getColumns(tableName);
+  if (!columns.includes(column.toLowerCase())) {
+    const sql = defaultValue
+      ? `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type} DEFAULT ${defaultValue}`
+      : `ALTER TABLE "${tableName}" ADD COLUMN "${column}" ${type}`;
+    await db.$executeRawUnsafe(sql);
+    return true;
+  }
+  return false;
+}
+
 export async function GET() {
   try {
-    // Migration untuk Penduduk
-    const result = await db.$queryRawUnsafe('PRAGMA table_info(Penduduk)');
-    const columns = result as Array<{ name: string }>;
-    const colNames = columns.map(c => c.name);
-    if (!colNames.includes('desil')) {
-      await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN desil TEXT;');
-    }
-    if (!colNames.includes('alamatLengkap')) {
-      await db.$executeRawUnsafe('ALTER TABLE Penduduk ADD COLUMN alamatLengkap TEXT;');
-    }
-    if (!colNames.includes('alamat')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN alamat TEXT DEFAULT 'KP. CEMPLANG';");
-    }
-    if (!colNames.includes('rt')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN rt TEXT DEFAULT '001';");
-    }
-    if (!colNames.includes('rw')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN rw TEXT DEFAULT '002';");
-    }
-    if (!colNames.includes('kelurahan')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN kelurahan TEXT DEFAULT 'SUKAMAJU';");
-    }
-    if (!colNames.includes('kecamatan')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN kecamatan TEXT DEFAULT 'CIBUNGBULANG';");
-    }
-    if (!colNames.includes('kabupaten')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN kabupaten TEXT DEFAULT 'BOGOR';");
-    }
-    if (!colNames.includes('provinsi')) {
-      await db.$executeRawUnsafe("ALTER TABLE Penduduk ADD COLUMN provinsi TEXT DEFAULT 'JAWA BARAT';");
+    const added: string[] = [];
+
+    // Ensure all tables exist by running prisma db push via raw SQL
+    // Penduduk table columns
+    const pendudukCols = [
+      ['desil', 'TEXT'],
+      ['alamatLengkap', 'TEXT'],
+      ['alamat', 'TEXT', "'KP. CEMPLANG'"],
+      ['rt', 'TEXT', "'001'"],
+      ['rw', 'TEXT', "'002'"],
+      ['kelurahan', 'TEXT', "'SUKAMAJU'"],
+      ['kecamatan', 'TEXT', "'CIBUNGBULANG'"],
+      ['kabupaten', 'TEXT', "'BOGOR'"],
+      ['provinsi', 'TEXT', "'JAWA BARAT'"],
+      ['keterangan', 'TEXT'],
+      ['namaPanggilan', 'TEXT'],
+      ['noHP', 'TEXT'],
+      ['bantuan', 'TEXT', "'[]'"],
+      ['bpjs', 'TEXT'],
+      ['punyaKTP', 'TEXT', "'BELUM'"],
+    ] as const;
+
+    for (const col of pendudukCols) {
+      const added_col = await addColumnIfMissing('Penduduk', col[0], col[1], col[2]);
+      if (added_col) added.push(`Penduduk.${col[0]}`);
     }
 
-    // Migration untuk PendudukSementara
+    // PendudukSementara table columns
     try {
-      const result2 = await db.$queryRawUnsafe('PRAGMA table_info(PendudukSementara)');
-      const columns2 = result2 as Array<{ name: string }>;
-      const colNames2 = columns2.map(c => c.name);
-      if (!colNames2.includes('desil')) {
-        await db.$executeRawUnsafe('ALTER TABLE PendudukSementara ADD COLUMN desil TEXT;');
+      const sementaraCols = [
+        ['alamatLengkap', 'TEXT'],
+        ['alamat', 'TEXT', "'KP. CEMPLANG'"],
+        ['rt', 'TEXT', "'001'"],
+        ['rw', 'TEXT', "'002'"],
+        ['kelurahan', 'TEXT', "'SUKAMAJU'"],
+        ['kecamatan', 'TEXT', "'CIBUNGBULANG'"],
+        ['kabupaten', 'TEXT', "'BOGOR'"],
+        ['provinsi', 'TEXT', "'JAWA BARAT'"],
+        ['keterangan', 'TEXT'],
+        ['bantuan', 'TEXT', "'[]'"],
+        ['bpjs', 'TEXT'],
+        ['namaPanggilan', 'TEXT'],
+        ['noHP', 'TEXT'],
+      ] as const;
+
+      for (const col of sementaraCols) {
+        const added_col = await addColumnIfMissing('PendudukSementara', col[0], col[1], col[2]);
+        if (added_col) added.push(`PendudukSementara.${col[0]}`);
       }
-      if (!colNames2.includes('alamatLengkap')) {
-        await db.$executeRawUnsafe('ALTER TABLE PendudukSementara ADD COLUMN alamatLengkap TEXT;');
-      }
-      if (!colNames2.includes('alamat')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN alamat TEXT DEFAULT 'KP. CEMPLANG';");
-      }
-      if (!colNames2.includes('rt')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN rt TEXT DEFAULT '001';");
-      }
-      if (!colNames2.includes('rw')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN rw TEXT DEFAULT '002';");
-      }
-      if (!colNames2.includes('kelurahan')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN kelurahan TEXT DEFAULT 'SUKAMAJU';");
-      }
-      if (!colNames2.includes('kecamatan')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN kecamatan TEXT DEFAULT 'CIBUNGBULANG';");
-      }
-      if (!colNames2.includes('kabupaten')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN kabupaten TEXT DEFAULT 'BOGOR';");
-      }
-      if (!colNames2.includes('provinsi')) {
-        await db.$executeRawUnsafe("ALTER TABLE PendudukSementara ADD COLUMN provinsi TEXT DEFAULT 'JAWA BARAT';");
-      }
-    } catch {
-      // Tabel PendudukSementara mungkin belum ada, abaikan
+    } catch (e) {
+      // PendudukSementara table might not exist yet
+      console.warn('PendudukSementara migration skipped:', e);
     }
 
-    return NextResponse.json({ message: 'Database siap.' });
+    // LaporanBulanan table
+    try {
+      await addColumnIfMissing('LaporanBulanan', 'keterangan', 'TEXT');
+    } catch (e) {
+      console.warn('LaporanBulanan migration skipped:', e);
+    }
+
+    return NextResponse.json({
+      message: 'Database siap.',
+      addedColumns: added,
+    });
   } catch (error) {
     console.error('Migration error:', error);
     return NextResponse.json({
