@@ -1,108 +1,138 @@
-import { NextRequest, NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { toUpperCase } from '@/lib/utils-kependudukan';
+import {
+  ALAMAT_LENGKAP_DEFAULT, ALAMAT_DEFAULT, RT_DEFAULT, RW_DEFAULT,
+  KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
+} from '@/lib/constants';
 
 export const maxDuration = 30;
 
-export async function POST(request: NextRequest) {
+// Endpoint diagnostik untuk mengecek koneksi DB dan schema
+// Akses: GET /api/import-debug
+export async function GET() {
+  const result: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    tests: {},
+  };
+
+  // Test 1: Koneksi DB
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const type = formData.get('type') as string || 'penduduk';
-
-    if (!file) {
-      return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-
-    // Parse dengan raw values (Date objects)
-    const rowsRaw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
-
-    // Parse dengan formatted strings (untuk perbandingan)
-    const rowsFormatted = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as string[][];
-
-    const result: Record<string, any> = {
-      type,
-      totalRows: rowsRaw.length,
-      sheetName: workbook.SheetNames[0],
-      fileMeta: {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      },
-    };
-
-    // Sample rows (raw vs formatted) untuk perbandingan
-    result.sampleRows = [];
-    for (let i = 0; i < Math.min(rowsRaw.length, 8); i++) {
-      const raw = rowsRaw[i] || [];
-      const formatted = rowsFormatted[i] || [];
-      result.sampleRows.push({
-        rowIndex: i,
-        raw: raw.map((v, j) => ({
-          col: j,
-          value: v,
-          type: v instanceof Date ? 'Date' : typeof v,
-          isoDate: v instanceof Date ? v.toISOString() : null,
-        })),
-        formatted: formatted.map((v, j) => ({
-          col: j,
-          value: v,
-          type: typeof v,
-        })),
-      });
-    }
-
-    // Detect header
-    for (let i = 0; i < Math.min(rowsRaw.length, 5); i++) {
-      const row = rowsRaw[i];
-      if (!row) continue;
-      const rowStr = row.map(c => String(c || '').toUpperCase()).join('|');
-      if (rowStr.includes('NO. KK') || rowStr.includes('NIK') || rowStr.includes('NAMA')) {
-        result.detectedHeaderRow = i;
-        result.headerContent = (rowsRaw[i] || []).map((c, j) => `[${j}]="${c}"`).join(' | ');
-        break;
-      }
-    }
-
-    // Date column analysis
-    const dateColIdx = type === 'sementara' ? 6 : 6; // TGL LAHIR column
-    result.dateColumnAnalysis = [];
-    for (let i = 1; i < Math.min(rowsRaw.length, 10); i++) {
-      const raw = rowsRaw[i]?.[dateColIdx];
-      const formatted = rowsFormatted[i]?.[dateColIdx];
-      if (raw !== undefined && raw !== '') {
-        result.dateColumnAnalysis.push({
-          rowIndex: i,
-          rawValue: raw,
-          rawType: raw instanceof Date ? 'Date' : typeof raw,
-          rawISO: raw instanceof Date ? raw.toISOString() : null,
-          formattedValue: formatted,
-          formattedType: typeof formatted,
-        });
-      }
-    }
-
-    // NoKK column analysis (merged cells check)
-    const nkkColIdx = 0;
-    result.nokkColumnAnalysis = [];
-    for (let i = 0; i < Math.min(rowsRaw.length, 15); i++) {
-      const raw = rowsRaw[i]?.[nkkColIdx];
-      if (raw !== undefined) {
-        result.nokkColumnAnalysis.push({
-          rowIndex: i,
-          value: raw,
-          type: typeof raw,
-          isEmpty: raw === '' || raw === undefined || raw === null,
-        });
-      }
-    }
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('[Import Debug] Error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    const count = await db.penduduk.count();
+    result.tests.dbConnection = { status: 'OK', pendudukCount: count };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    result.tests.dbConnection = { status: 'FAIL', error: msg };
+    return NextResponse.json(result, { status: 500 });
   }
+
+  // Test 2: Coba insert 1 record test (lalu hapus)
+  const testNIK = '9999999999999999';
+  const testNoKK = '9999999999999999';
+  try {
+    const created = await db.penduduk.create({
+      data: {
+        noKK: testNoKK,
+        nik: testNIK,
+        namaLengkap: 'TEST IMPORT DIAGNOSTIC',
+        jenisKelamin: 'LAKI-LAKI',
+        statusKeluarga: 'KEPALA KELUARGA',
+        tempatLahir: 'TEST',
+        tanggalLahir: new Date('2000-01-01'),
+        agama: 'ISLAM',
+        pendidikan: 'SD/SEDERAJAT',
+        pekerjaan: 'BELUM/TIDAK BEKERJA',
+        statusPerkawinan: 'BELUM MENIKAH',
+        kewarganegaraan: 'WNI',
+        namaAyah: 'TEST',
+        namaIbu: 'TEST',
+        namaPanggilan: null,
+        noHP: null,
+        punyaKTP: 'BELUM',
+        bantuan: '[]',
+        bpjs: null,
+        alamat: ALAMAT_DEFAULT,
+        rt: RT_DEFAULT,
+        rw: RW_DEFAULT,
+        kelurahan: KELURAHAN_DEFAULT,
+        kecamatan: KECAMATAN_DEFAULT,
+        kabupaten: KABUPATEN_DEFAULT,
+        provinsi: PROVINSI_DEFAULT,
+        alamatLengkap: ALAMAT_LENGKAP_DEFAULT,
+        keterangan: null,
+      },
+    });
+    await db.penduduk.delete({ where: { id: created.id } });
+    result.tests.insertTest = {
+      status: 'OK',
+      message: 'Insert + Delete test record berhasil',
+      recordId: created.id,
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    result.tests.insertTest = { status: 'FAIL', error: msg };
+
+    // Jika gagal karena alamatLengkap, coba tanpa alamatLengkap
+    try {
+      const created2 = await db.penduduk.create({
+        data: {
+          noKK: testNoKK,
+          nik: testNIK,
+          namaLengkap: 'TEST IMPORT DIAG',
+          jenisKelamin: 'LAKI-LAKI',
+          statusKeluarga: 'KEPALA KELUARGA',
+          tempatLahir: 'TEST',
+          tanggalLahir: new Date('2000-01-01'),
+          agama: 'ISLAM',
+          pendidikan: 'SD/SEDERAJAT',
+          pekerjaan: 'BELUM/TIDAK BEKERJA',
+          statusPerkawinan: 'BELUM MENIKAH',
+          kewarganegaraan: 'WNI',
+          namaAyah: 'TEST',
+          namaIbu: 'TEST',
+          punyaKTP: 'BELUM',
+          bantuan: '[]',
+        },
+      });
+      await db.penduduk.delete({ where: { id: created2.id } });
+      result.tests.insertMinimal = {
+        status: 'OK',
+        message: 'Insert minimal (tanpa alamatLengkap dll) berhasil - ada kolom yang hilang di DB!',
+      };
+    } catch (e2: unknown) {
+      const msg2 = e2 instanceof Error ? e2.message : String(e2);
+      result.tests.insertMinimal = { status: 'FAIL', error: msg2 };
+    }
+  }
+
+  // Test 3: Cek kolom yang ada di tabel Penduduk via Prisma introspection
+  try {
+    // Coba akses berbagai field untuk cek apakah kolomnya ada
+    const sample = await db.penduduk.findFirst({
+      select: {
+        id: true, noKK: true, nik: true, namaLengkap: true,
+        alamatLengkap: true, desil: true, bpjs: true, bantuan: true,
+        namaPanggilan: true, noHP: true, punyaKTP: true,
+        alamat: true, rt: true, rw: true, kelurahan: true,
+        kecamatan: true, kabupaten: true, provinsi: true, keterangan: true,
+      },
+    });
+    result.tests.schemaCheck = {
+      status: sample ? 'OK (all columns exist)' : 'OK (table empty, schema assumed correct)',
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    result.tests.schemaCheck = { status: 'FAIL', error: msg };
+  }
+
+  // Test 4: PendudukSementara
+  try {
+    const countS = await db.pendudukSementara.count();
+    result.tests.sementaraConnection = { status: 'OK', count: countS };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    result.tests.sementaraConnection = { status: 'FAIL', error: msg };
+  }
+
+  return NextResponse.json(result);
 }

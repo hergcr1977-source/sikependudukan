@@ -79,10 +79,20 @@ function detectColumns(headerRow: any[]): Record<string, number> {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });
+
+    // ===== STEP 0: Test DB connection first =====
+    try {
+      await db.penduduk.count();
+    } catch (dbError: unknown) {
+      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      console.error('[Import Penduduk] DB connection failed:', msg);
+      return NextResponse.json({ error: 'Koneksi database gagal: ' + msg.substring(0, 200) }, { status: 500 });
+    }
 
     // ===== STEP 1: Parse Excel =====
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -225,7 +235,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Import Penduduk] RESULT: imported=${imported}, skipped=${skipped}, dateFails=${dateParseFails}, dbErrors=${errors.length}`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Import Penduduk] RESULT: imported=${imported}, skipped=${skipped}, dateFails=${dateParseFails}, dbErrors=${errors.length}, time=${elapsed}s`);
 
     return NextResponse.json({
       message: `Berhasil mengimpor ${imported} data penduduk${skipped > 0 ? `, ${skipped} dilewati` : ''}`,
@@ -233,6 +244,7 @@ export async function POST(request: NextRequest) {
       skipped,
       dateParseFails: dateParseFails > 0 ? dateParseFails : undefined,
       errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
+      elapsed: elapsed + 's',
     });
   } catch (error) {
     console.error('[Import Penduduk] FATAL:', error);
