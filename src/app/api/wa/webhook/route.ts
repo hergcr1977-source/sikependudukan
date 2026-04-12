@@ -515,6 +515,18 @@ export async function POST(request: NextRequest) {
     console.log('Body keys:', Object.keys(body).join(', '));
     console.log('Raw body:', rawBody.substring(0, 500));
 
+    // Skip delivery callbacks / status updates (not incoming messages)
+    if (body.status && body.id && !body.message) {
+      console.log('Skipping delivery callback (status update, not incoming message)');
+      return NextResponse.json({ status: 'ignored', reason: 'delivery_callback' });
+    }
+
+    // Skip if it looks like a device event, not a chat message
+    if (body.event || body.type === 'event' || body.type === 'status') {
+      console.log('Skipping event/status notification');
+      return NextResponse.json({ status: 'ignored', reason: 'event_notification' });
+    }
+
     // Extract phone, message, name from Fonnte format
     const extracted = extractFromFonnte(body);
 
