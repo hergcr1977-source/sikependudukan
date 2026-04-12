@@ -1,41 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// GET - ambil semua data kas RT (urut terbaru)
+// Helper: pastikan tabel KasRT ada, jika belum buat otomatis
+async function ensureTable() {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "KasRT" (
+        "id" SERIAL PRIMARY KEY,
+        "tanggal" TIMESTAMP(3) NOT NULL,
+        "jenis" TEXT NOT NULL,
+        "jumlah" INTEGER NOT NULL,
+        "keterangan" TEXT NOT NULL DEFAULT '',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch (e) {
+    console.error('ensureTable error:', e);
+  }
+}
+
+// GET - ambil semua data kas RT
 export async function GET(request: NextRequest) {
   try {
+    await ensureTable();
+
     const { searchParams } = new URL(request.url);
     const bulan = searchParams.get('bulan');
     const tahun = searchParams.get('tahun');
     const jenis = searchParams.get('jenis');
 
-    const where: Record<string, unknown> = {};
+    let sql = 'SELECT * FROM "KasRT" WHERE 1=1';
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    if (bulan && tahun) {
+    if (bulan && tahun && bulan !== '0') {
       const startDate = new Date(parseInt(tahun), parseInt(bulan) - 1, 1);
       const endDate = new Date(parseInt(tahun), parseInt(bulan), 0, 23, 59, 59);
-      where.tanggal = {
-        gte: startDate,
-        lte: endDate,
-      };
+      sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
+      params.push(startDate, endDate);
     } else if (tahun) {
       const startDate = new Date(parseInt(tahun), 0, 1);
       const endDate = new Date(parseInt(tahun), 11, 31, 23, 59, 59);
-      where.tanggal = {
-        gte: startDate,
-        lte: endDate,
-      };
+      sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
+      params.push(startDate, endDate);
     }
 
     if (jenis) {
-      where.jenis = jenis;
+      sql += ` AND "jenis" = $${paramIndex++}`;
+      params.push(jenis);
     }
 
-    const data = await db.kasRT.findMany({
-      where,
-      orderBy: { tanggal: 'desc' },
-    });
+    sql += ' ORDER BY "tanggal" DESC';
 
+    const data = await db.$queryRawUnsafe(sql, ...params);
     return NextResponse.json(data);
   } catch (error) {
     console.error('GET /api/kas-rt error:', error);
@@ -61,48 +79,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Jumlah harus lebih dari 0' }, { status: 400 });
     }
 
-    const kas = await db.kasRT.create({
-      data: {
-        tanggal: new Date(tanggal),
-        jenis,
-        jumlah: Number(jumlah),
-        keterangan: keterangan || '',
-      },
-    });
+    // Pastikan tabel ada
+    await ensureTable();
 
-    return NextResponse.json(kas);
+    // Gunakan raw SQL INSERT
+    const result = await db.$queryRawUnsafe(
+      `INSERT INTO "KasRT" ("tanggal", "jenis", "jumlah", "keterangan", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      new Date(tanggal),
+      jenis,
+      Number(jumlah),
+      keterangan || ''
+    );
+
+    return NextResponse.json(result[0]);
   } catch (error) {
     console.error('POST /api/kas-rt error:', error);
     const msg = error instanceof Error ? error.message : String(error);
-    // Jika tabel belum ada, coba buat otomatis
-    if (msg.includes('does not exist') || msg.includes('relation')) {
-      try {
-        await db.$executeRawUnsafe(`
-          CREATE TABLE IF NOT EXISTS "KasRT" (
-            "id" SERIAL PRIMARY KEY,
-            "tanggal" TIMESTAMP(3) NOT NULL,
-            "jenis" TEXT NOT NULL,
-            "jumlah" INTEGER NOT NULL,
-            "keterangan" TEXT NOT NULL DEFAULT '',
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        // Retry setelah tabel dibuat
-        const kas = await db.kasRT.create({
-          data: {
-            tanggal: new Date(tanggal),
-            jenis,
-            jumlah: Number(jumlah),
-            keterangan: keterangan || '',
-          },
-        });
-        return NextResponse.json(kas);
-      } catch (retryError) {
-        console.error('POST /api/kas-rt retry error:', retryError);
-        return NextResponse.json({ error: 'Gagal menambah data kas: tabel belum tersedia' }, { status: 500 });
-      }
-    }
     return NextResponse.json({ error: `Gagal menambah data kas: ${msg}` }, { status: 500 });
   }
 }
