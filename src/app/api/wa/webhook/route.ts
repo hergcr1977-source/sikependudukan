@@ -17,8 +17,20 @@ import { db } from '@/lib/db';
 const FONNTE_API_KEY = process.env.FONNTE_API_KEY || 'Qpd7Wq4tJLHQF6qNVo5S';
 const FONNTE_SEND_URL = 'https://api.fonnte.com/send';
 
+// In-memory webhook log (for debugging)
+const webhookLogs: Array<{
+  time: string;
+  from: string;
+  phone: string;
+  message: string;
+  rawBody: string;
+  replyStatus: string;
+  replyDetail: string;
+}> = [];
+const MAX_LOGS = 50;
+
 // Helper: kirim pesan WA via Fonnte
-async function sendWaMessage(target: string, message: string): Promise<boolean> {
+async function sendWaMessage(target: string, message: string): Promise<{ ok: boolean; detail: string }> {
   try {
     const res = await fetch(FONNTE_SEND_URL, {
       method: 'POST',
@@ -34,10 +46,14 @@ async function sendWaMessage(target: string, message: string): Promise<boolean> 
     });
     const data = await res.json();
     console.log('Fonnte send response:', JSON.stringify(data));
-    return data.status === true;
-  } catch (error) {
+
+    if (data.status === true) {
+      return { ok: true, detail: JSON.stringify(data) };
+    }
+    return { ok: false, detail: `Fonnte error: ${data.reason || JSON.stringify(data)}` };
+  } catch (error: any) {
     console.error('sendWaMessage error:', error);
-    return false;
+    return { ok: false, detail: `Exception: ${error.message}` };
   }
 }
 
@@ -48,13 +64,18 @@ function formatTanggal(date: Date): string {
   });
 }
 
+// Helper: clean phone number
+function cleanPhone(raw: string): string {
+  let phone = raw.replace(/[^0-9]/g, '');
+  if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+  return phone;
+}
+
 // ============ COMMAND HANDLERS ============
 
 async function handleCekNik(phone: string, nik: string) {
-  // Validasi NIK 16 digit
   if (!/^\d{16}$/.test(nik)) {
-    await sendWaMessage(phone, `❌ NIK harus 16 digit angka.\n\nContoh: #NIK 3201010101010001`);
-    return;
+    return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #NIK 3201010101010001`);
   }
 
   const penduduk = await db.$queryRawUnsafe(
@@ -62,8 +83,7 @@ async function handleCekNik(phone: string, nik: string) {
   ) as any[];
 
   if (!penduduk || penduduk.length === 0) {
-    await sendWaMessage(phone, `❌ Data penduduk dengan NIK *${nik}* tidak ditemukan.`);
-    return;
+    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.`);
   }
 
   const p = penduduk[0];
@@ -71,7 +91,7 @@ async function handleCekNik(phone: string, nik: string) {
   const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
   const bantuanStr = bantuanArr.length > 0 ? bantuanArr.join(', ') : 'Tidak ada';
 
-  const msg = `*📋 DATA PENDUDUK*
+  const msg = `*DATA PENDUDUK*
 ━━━━━━━━━━━━━━━━━
 *Nama:* ${p.namaLengkap || '-'}
 *NIK:* ${p.nik}
@@ -94,13 +114,12 @@ async function handleCekNik(phone: string, nik: string) {
 ━━━━━━━━━━━━━━━━━
 _Data dari Sistem Kependudukan RT.001 RW.002_`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleCariNama(phone: string, nama: string) {
   if (nama.length < 3) {
-    await sendWaMessage(phone, `❌ Nama terlalu pendek, minimal 3 karakter.\n\nContoh: #CARI HERMAN`);
-    return;
+    return await sendWaMessage(phone, `Nama terlalu pendek, minimal 3 karakter.\n\nContoh: #CARI HERMAN`);
   }
 
   const results = await db.$queryRawUnsafe(
@@ -109,12 +128,11 @@ async function handleCariNama(phone: string, nama: string) {
   ) as any[];
 
   if (!results || results.length === 0) {
-    await sendWaMessage(phone, `❌ Penduduk dengan nama "*${nama}*" tidak ditemukan.`);
-    return;
+    return await sendWaMessage(phone, `Penduduk dengan nama "*${nama}*" tidak ditemukan.`);
   }
 
-  let msg = `*🔍 HASIL PENCARIAN: "${nama}"*\nDitemukan ${results.length} data:\n\n`;
-  results.forEach((p, i) => {
+  let msg = `*HASIL PENCARIAN: "${nama}"*\nDitemukan ${results.length} data:\n\n`;
+  results.forEach((p: any, i: number) => {
     const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P';
     msg += `${i + 1}. *${p.namaLengkap}*\n   NIK: ${p.nik} | ${jk} | ${p.statusKeluarga}\n   RT ${p.rt}/${p.rw}\n\n`;
   });
@@ -122,10 +140,9 @@ async function handleCariNama(phone: string, nama: string) {
   if (results.length >= 10) {
     msg += `_Menampilkan maksimal 10 hasil. Gunakan nama yang lebih spesifik._`;
   }
-
   msg += `\n_Ketik #NIK <nik> untuk detail lengkap_`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleStatistik(phone: string) {
@@ -140,11 +157,10 @@ async function handleStatistik(phone: string) {
     `SELECT COALESCE(SUM(CASE WHEN "jenis" = 'PEMASUKAN' THEN "jumlah" ELSE 0 END), 0) as masuk,
             COALESCE(SUM(CASE WHEN "jenis" = 'PENGELUARAN' THEN "jumlah" ELSE 0 END), 0) as keluar,
             (COALESCE(SUM(CASE WHEN "jenis" = 'PEMASUKAN' THEN "jumlah" ELSE 0 END), 0) -
-             COALESCE(SUM(CASE WHEN "jenis" = 'PENGELUARAN" THEN "jumlah" ELSE 0 END), 0)) as saldo
+             COALESCE(SUM(CASE WHEN "jenis" = 'PENGELUARAN' THEN "jumlah" ELSE 0 END), 0)) as saldo
      FROM "KasRT"`
   ) as any[];
 
-  // Usia
   const usiaData = await db.$queryRawUnsafe(`
     SELECT
       COUNT(*) FILTER (WHERE EXTRACT(YEAR FROM AGE("tanggalLahir")) < 17) as anak,
@@ -155,34 +171,33 @@ async function handleStatistik(phone: string) {
 
   const u = usiaData[0] || { anak: 0, produktif: 0, lansia: 0 };
   const kas = totalKas[0] || { masuk: 0, keluar: 0, saldo: 0 };
-
   const formatRp = (n: number) => new Intl.NumberFormat('id-ID').format(n);
 
-  const msg = `*📊 STATISTIK RT.001 RW.002*
+  const msg = `*STATISTIK RT.001 RW.002*
 ━━━━━━━━━━━━━━━━━
-*👥 Penduduk Tetap:* ${total[0]?.count || 0} orang
-   👨 Laki-laki: ${laki[0]?.count || 0}
-   👩 Perempuan: ${perempuan[0]?.count || 0}
-   👨‍👩‍👧‍👦 Jumlah KK: ${kk[0]?.count || 0}
+*Penduduk Tetap:* ${total[0]?.count || 0} orang
+   Laki-laki: ${laki[0]?.count || 0}
+   Perempuan: ${perempuan[0]?.count || 0}
+   Jumlah KK: ${kk[0]?.count || 0}
 
-*👥 Penduduk Sementara:* ${sementara[0]?.count || 0} orang
+*Penduduk Sementara:* ${sementara[0]?.count || 0} orang
 
-*📅 Usia Penduduk:*
-   👶 Anak (<17): ${u.anak}
-   💪 Produktif (17-59): ${u.produktif}
-   🧓 Lansia (60+): ${u.lansia}
+*Usia Penduduk:*
+   Anak (<17): ${u.anak}
+   Produktif (17-59): ${u.produktif}
+   Lansia (60+): ${u.lansia}
 
-*📝 Kejadian:* ${kejadian[0]?.count || 0}
+*Kejadian:* ${kejadian[0]?.count || 0}
 
-*💰 Kas RT:*
-   📈 Pemasukan: Rp ${formatRp(kas.masuk)}
-   📉 Pengeluaran: Rp ${formatRp(kas.keluar)}
-   💵 Saldo: Rp ${formatRp(kas.saldo)}
+*Kas RT:*
+   Pemasukan: Rp ${formatRp(kas.masuk)}
+   Pengeluaran: Rp ${formatRp(kas.keluar)}
+   Saldo: Rp ${formatRp(kas.saldo)}
 
 ━━━━━━━━━━━━━━━━━
 _Data per ${formatTanggal(new Date())}_`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleKasRT(phone: string, bulanParam?: string) {
@@ -190,7 +205,6 @@ async function handleKasRT(phone: string, bulanParam?: string) {
   let bulan = bulanParam ? parseInt(bulanParam) : now.getMonth() + 1;
   let tahun = now.getFullYear();
 
-  // Cek apakah bulanParam berisi format bulan-tahun (contoh: 3-2026 atau 03-2026)
   if (bulanParam && bulanParam.includes('-')) {
     const parts = bulanParam.split('-');
     bulan = parseInt(parts[0]);
@@ -198,8 +212,7 @@ async function handleKasRT(phone: string, bulanParam?: string) {
   }
 
   if (bulan < 1 || bulan > 12) {
-    await sendWaMessage(phone, `❌ Bulan tidak valid (1-12).\n\nContoh:\n#KAS\n#KAS 4\n#KAS 4-2026`);
-    return;
+    return await sendWaMessage(phone, `Bulan tidak valid (1-12).\n\nContoh:\n#KAS\n#KAS 4\n#KAS 4-2026`);
   }
 
   const namaBulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -212,23 +225,22 @@ async function handleKasRT(phone: string, bulanParam?: string) {
   ) as any[];
 
   if (!data || data.length === 0) {
-    await sendWaMessage(phone, `📭 Tidak ada data kas RT untuk bulan ${namaBulan[bulan - 1]} ${tahun}.`);
-    return;
+    return await sendWaMessage(phone, `Tidak ada data kas RT untuk bulan ${namaBulan[bulan - 1]} ${tahun}.`);
   }
 
   let totalMasuk = 0;
   let totalKeluar = 0;
-  let msg = `*💰 KAS RT - ${namaBulan[bulan - 1]} ${tahun}*\n━━━━━━━━━━━━━━━━━\n\n`;
+  let msg = `*KAS RT - ${namaBulan[bulan - 1]} ${tahun}*\n━━━━━━━━━━━━━━━━━\n\n`;
 
-  data.forEach((d, i) => {
+  data.forEach((d: any) => {
     const tgl = formatTanggal(new Date(d.tanggal));
     const rp = new Intl.NumberFormat('id-ID').format(d.jumlah);
     if (d.jenis === 'PEMASUKAN') {
       totalMasuk += d.jumlah;
-      msg += `📈 *+Rp ${rp}*\n   ${tgl} | ${d.keterangan || '-'}\n\n`;
+      msg += `*+Rp ${rp}*\n   ${tgl} | ${d.keterangan || '-'}\n\n`;
     } else {
       totalKeluar += d.jumlah;
-      msg += `📉 *-Rp ${rp}*\n   ${tgl} | ${d.keterangan || '-'}\n\n`;
+      msg += `*-Rp ${rp}*\n   ${tgl} | ${d.keterangan || '-'}\n\n`;
     }
   });
 
@@ -236,18 +248,17 @@ async function handleKasRT(phone: string, bulanParam?: string) {
   const fmtRp = (n: number) => new Intl.NumberFormat('id-ID').format(n);
 
   msg += `━━━━━━━━━━━━━━━━━
-📈 *Total Pemasukan:* Rp ${fmtRp(totalMasuk)}
-📉 *Total Pengeluaran:* Rp ${fmtRp(totalKeluar)}
-💵 *Saldo:* Rp ${fmtRp(saldo)}
+*Total Pemasukan:* Rp ${fmtRp(totalMasuk)}
+*Total Pengeluaran:* Rp ${fmtRp(totalKeluar)}
+*Saldo:* Rp ${fmtRp(saldo)}
 ━━━━━━━━━━━━━━━━━`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleSementara(phone: string, nik: string) {
   if (!/^\d{16}$/.test(nik)) {
-    await sendWaMessage(phone, `❌ NIK harus 16 digit angka.\n\nContoh: #SEMENTARA 3201010101010001`);
-    return;
+    return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #SEMENTARA 3201010101010001`);
   }
 
   const result = await db.$queryRawUnsafe(
@@ -255,8 +266,7 @@ async function handleSementara(phone: string, nik: string) {
   ) as any[];
 
   if (!result || result.length === 0) {
-    await sendWaMessage(phone, `❌ Data penduduk sementara dengan NIK *${nik}* tidak ditemukan.`);
-    return;
+    return await sendWaMessage(phone, `Data penduduk sementara dengan NIK *${nik}* tidak ditemukan.`);
   }
 
   const p = result[0];
@@ -264,7 +274,7 @@ async function handleSementara(phone: string, nik: string) {
   const tanggalMasuk = p.tanggalMasuk ? formatTanggal(new Date(p.tanggalMasuk)) : '-';
   const tanggalKeluar = p.tanggalKeluar ? formatTanggal(new Date(p.tanggalKeluar)) : 'Masih tinggal';
 
-  const msg = `*📋 DATA PENDUDUK SEMENTARA*
+  const msg = `*DATA PENDUDUK SEMENTARA*
 ━━━━━━━━━━━━━━━━━
 *Nama:* ${p.namaLengkap || '-'}
 *NIK:* ${p.nik}
@@ -279,7 +289,7 @@ async function handleSementara(phone: string, nik: string) {
 *No. HP:* ${p.noHP || '-'}
 ━━━━━━━━━━━━━━━━━`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleBantuan(phone: string) {
@@ -287,7 +297,6 @@ async function handleBantuan(phone: string) {
     `SELECT COUNT(*)::int as count FROM "Penduduk" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL`
   ) as any[];
 
-  // Hitung per jenis bantuan
   const bantuanList = await db.$queryRawUnsafe(
     `SELECT "bantuan" FROM "Penduduk" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL`
   ) as any[];
@@ -302,30 +311,30 @@ async function handleBantuan(phone: string) {
     } catch {}
   });
 
-  let msg = `*🛡️ DATA BANTUAN SOSIAL*
+  let msg = `*DATA BANTUAN SOSIAL*
 ━━━━━━━━━━━━━━━━━
 *Total Penerima Bantuan:* ${totalBantuan[0]?.count || 0} penduduk\n\n`;
 
   if (Object.keys(bantuanCount).length > 0) {
     msg += `*Rincian per Jenis Bantuan:*\n`;
     Object.entries(bantuanCount)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
       .forEach(([nama, count]) => {
-        msg += `  • ${nama}: ${count} orang\n`;
+        msg += `  - ${nama}: ${count} orang\n`;
       });
   } else {
     msg += `_Belum ada data bantuan tercatat._`;
   }
 
   msg += `\n━━━━━━━━━━━━━━━━━`;
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
 async function handleHelp(phone: string) {
-  const msg = `*🤖 BOT WA SIKEPENDUDUKAN*
+  const msg = `*BOT WA SIKEPENDUDUKAN*
 RT.001 RW.002
 
-*📋 DAFTAR PERINTAH:*
+*DAFTAR PERINTAH:*
 
 1. *#NIK <nik>*
    Cek data penduduk lengkap
@@ -354,109 +363,247 @@ RT.001 RW.002
 
 _Powered by Sistem Kependudukan RT.001 RW.002_`;
 
-  await sendWaMessage(phone, msg);
+  return await sendWaMessage(phone, msg);
 }
 
-// ============ MAIN WEBHOOK HANDLER ============
+// ============ MAIN COMMAND PROCESSOR ============
 
 async function processCommand(phone: string, message: string) {
   const text = message.trim().toUpperCase();
 
   console.log(`Processing WA command from ${phone}: "${text}"`);
 
-  try {
-    if (text.startsWith('#NIK ')) {
-      const nik = text.replace('#NIK ', '').trim();
-      await handleCekNik(phone, nik);
-    } else if (text.startsWith('#CARI ')) {
-      const nama = message.trim().substring(6).trim(); // Keep original case for search
-      await handleCariNama(phone, nama);
-    } else if (text === '#STATISTIK') {
-      await handleStatistik(phone);
-    } else if (text.startsWith('#KAS')) {
-      const param = text.replace('#KAS', '').trim();
-      await handleKasRT(phone, param || undefined);
-    } else if (text.startsWith('#SEMENTARA ')) {
-      const nik = text.replace('#SEMENTARA ', '').trim();
-      await handleSementara(phone, nik);
-    } else if (text === '#BANTUAN') {
-      await handleBantuan(phone);
-    } else if (text === '#HELP' || text === 'MENU' || text === '#MENU') {
-      await handleHelp(phone);
-    } else {
-      // Unknown command - send help
-      await sendWaMessage(phone, 
-        `⚠️ Perintah tidak dikenali.\n\nKetik *#HELP* untuk melihat daftar perintah yang tersedia.`
-      );
-    }
-  } catch (error) {
-    console.error('processCommand error:', error);
-    await sendWaMessage(phone, `❌ Terjadi kesalahan saat memproses permintaan. Silakan coba lagi.`);
+  if (text.startsWith('#NIK ')) {
+    const nik = text.replace('#NIK ', '').trim();
+    return await handleCekNik(phone, nik);
+  } else if (text.startsWith('#CARI ')) {
+    const nama = message.trim().substring(6).trim();
+    return await handleCariNama(phone, nama);
+  } else if (text === '#STATISTIK') {
+    return await handleStatistik(phone);
+  } else if (text.startsWith('#KAS')) {
+    const param = text.replace('#KAS', '').trim();
+    return await handleKasRT(phone, param || undefined);
+  } else if (text.startsWith('#SEMENTARA ')) {
+    const nik = text.replace('#SEMENTARA ', '').trim();
+    return await handleSementara(phone, nik);
+  } else if (text === '#BANTUAN') {
+    return await handleBantuan(phone);
+  } else if (text === '#HELP' || text === 'MENU' || text === '#MENU') {
+    return await handleHelp(phone);
+  } else {
+    return await sendWaMessage(phone,
+      `Perintah tidak dikenali.\n\nKetik *#HELP* untuk melihat daftar perintah yang tersedia.`
+    );
   }
 }
 
-// ============ WEBHOOK ENDPOINT ============
+// ============ PARSE FONNTE WEBHOOK ============
+
+function extractFromFonnte(body: any): { phone: string; message: string; name: string } | null {
+  // Try every possible field combination Fonnte might send
+
+  // Format 1: Direct fields (most common)
+  if (body.phone && body.message) {
+    return {
+      phone: body.phone,
+      message: body.message,
+      name: body.name || body.pushName || '',
+    };
+  }
+
+  // Format 2: senderData wrapper
+  if (body.senderData) {
+    return {
+      phone: body.senderData.phone || body.senderData.number || body.senderData.remoteJid || '',
+      message: body.message || body.text || body.body || '',
+      name: body.senderData.pushName || body.senderData.name || body.senderData.notify || '',
+    };
+  }
+
+  // Format 3: data wrapper (callback)
+  if (body.data) {
+    return {
+      phone: body.data.phone || body.data.from || body.data.remoteJid || '',
+      message: body.data.message || body.data.text || body.data.body || body.data.conversation || '',
+      name: body.data.name || body.data.pushName || '',
+    };
+  }
+
+  // Format 4: entry/messages format (some versions)
+  if (body.entry && Array.isArray(body.entry)) {
+    for (const entry of body.entry) {
+      if (entry.changes && Array.isArray(entry.changes)) {
+        for (const change of entry.changes) {
+          if (change.value?.messages && Array.isArray(change.value.messages)) {
+            const msg = change.value.messages[0];
+            return {
+              phone: msg.from || '',
+              message: msg.text?.body || msg.text || msg.body || '',
+              name: change.value.contact_name || change.value.contacts?.[0]?.profile?.name || '',
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Format 5: messages array directly
+  if (body.messages && Array.isArray(body.messages) && body.messages.length > 0) {
+    const msg = body.messages[0];
+    return {
+      phone: msg.from || msg.phone || '',
+      message: msg.text?.body || msg.text || msg.body || msg.message || '',
+      name: msg.pushName || msg.name || body.contacts?.[0]?.profile?.name || '',
+    };
+  }
+
+  // Format 6: Bare minimum - any field with phone-like value
+  const allKeys = Object.keys(body);
+  const phoneKey = allKeys.find(k => {
+    const v = String(body[k]);
+    return v.length >= 10 && /^\d+$/.test(v.replace(/[^0-9]/g, ''));
+  });
+  if (phoneKey) {
+    const msgKey = allKeys.find(k => k !== phoneKey && typeof body[k] === 'string' && body[k].length > 0);
+    if (msgKey) {
+      return {
+        phone: body[phoneKey],
+        message: body[msgKey],
+        name: body.name || body.pushName || '',
+      };
+    }
+  }
+
+  return null;
+}
+
+// ============ WEBHOOK ENDPOINTS ============
 
 export async function POST(request: NextRequest) {
+  let body: any = {};
+  let rawBody = '';
+  let phone = '';
+  let message = '';
+  let senderName = '';
+
   try {
-    const body = await request.json();
+    const contentType = request.headers.get('content-type') || '';
 
-    console.log('Received Fonnte webhook:', JSON.stringify(body));
+    if (contentType.includes('application/json')) {
+      rawBody = await request.text();
+      body = JSON.parse(rawBody);
+    } else if (contentType.includes('form-data') || contentType.includes('urlencoded')) {
+      const formData = await request.formData();
+      rawBody = '{}';
+      body = {};
+      for (const [key, value] of formData.entries()) {
+        body[key] = value;
+      }
+    } else {
+      // Try JSON first, fallback to text
+      rawBody = await request.text();
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        body = { raw: rawBody };
+      }
+    }
 
-    // Handle both Fonnte v1 and v2 webhook formats
-    let phone = '';
-    let message = '';
-    let senderName = '';
+    console.log('=== FONNTE WEBHOOK RECEIVED ===');
+    console.log('Content-Type:', contentType);
+    console.log('Body keys:', Object.keys(body).join(', '));
+    console.log('Raw body:', rawBody.substring(0, 500));
 
-    // Fonnte webhook format
-    if (body.phone) {
-      phone = body.phone;
-      message = body.message || body.text || body.body || '';
-      senderName = body.name || body.pushName || '';
+    // Extract phone, message, name from Fonnte format
+    const extracted = extractFromFonnte(body);
+
+    if (!extracted) {
+      console.log('Could not extract phone/message from webhook body. Body:', JSON.stringify(body).substring(0, 500));
+
+      // Log it
+      webhookLogs.unshift({
+        time: new Date().toISOString(),
+        from: 'unknown',
+        phone: '',
+        message: '',
+        rawBody: JSON.stringify(body).substring(0, 1000),
+        replyStatus: 'skipped',
+        replyDetail: 'Could not extract phone/message',
+      });
+      if (webhookLogs.length > MAX_LOGS) webhookLogs.pop();
+
+      return NextResponse.json({ status: 'ignored', reason: 'could not extract phone or message', received_keys: Object.keys(body) });
     }
-    // Alternative format
-    else if (body.senderData) {
-      phone = body.senderData?.phone || body.senderData?.number || '';
-      message = body.message || body.text || '';
-      senderName = body.senderData?.pushName || body.senderData?.name || '';
-    }
-    // Webhook callback format
-    else if (body.data) {
-      phone = body.data.phone || '';
-      message = body.data.message || body.data.text || '';
-      senderName = body.data.name || '';
-    }
+
+    phone = cleanPhone(extracted.phone);
+    message = extracted.message;
+    senderName = extracted.name || '';
 
     if (!phone || !message) {
-      console.log('No phone or message in webhook, skipping.');
-      return NextResponse.json({ status: 'ignored', reason: 'no phone or message' });
+      console.log('Empty phone or message after extraction');
+
+      webhookLogs.unshift({
+        time: new Date().toISOString(),
+        from: senderName,
+        phone: extracted.phone || '',
+        message: extracted.message || '',
+        rawBody: JSON.stringify(body).substring(0, 1000),
+        replyStatus: 'skipped',
+        replyDetail: 'Empty phone or message',
+      });
+      if (webhookLogs.length > MAX_LOGS) webhookLogs.pop();
+
+      return NextResponse.json({ status: 'ignored', reason: 'empty phone or message' });
     }
 
-    // Clean phone number (remove @s.whatsapp.net, +62, etc.)
-    phone = phone.replace(/[^0-9]/g, '');
-    if (phone.startsWith('0')) phone = '62' + phone.substring(1);
-    if (phone.startsWith('62')) phone = phone; // already correct
-    else if (phone.length <= 12) phone = '62' + phone;
+    console.log(`From: ${senderName} (${phone}), Message: "${message}"`);
 
-    console.log(`WA message from ${senderName} (${phone}): "${message}"`);
+    // MUST await - Vercel serverless freezes after response
+    const replyResult = await processCommand(phone, message);
 
-    // MUST await the command processing on Vercel serverless!
-    // Fire-and-forget doesn't work because Vercel freezes the execution
-    // context once the response is sent.
-    await processCommand(phone, message);
+    console.log(`Reply result: ok=${replyResult.ok}, detail=${replyResult.detail}`);
 
-    return NextResponse.json({ status: 'received', processed: true });
-  } catch (error) {
+    // Save to log
+    webhookLogs.unshift({
+      time: new Date().toISOString(),
+      from: senderName,
+      phone,
+      message,
+      rawBody: JSON.stringify(body).substring(0, 1000),
+      replyStatus: replyResult.ok ? 'sent' : 'failed',
+      replyDetail: replyResult.detail,
+    });
+    if (webhookLogs.length > MAX_LOGS) webhookLogs.pop();
+
+    return NextResponse.json({ status: 'ok', phone, command: message.substring(0, 50), reply: replyResult.ok });
+  } catch (error: any) {
     console.error('Webhook error:', error);
-    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+
+    webhookLogs.unshift({
+      time: new Date().toISOString(),
+      from: 'error',
+      phone: '',
+      message: '',
+      rawBody: rawBody.substring(0, 1000),
+      replyStatus: 'error',
+      replyDetail: error.message || String(error),
+    });
+    if (webhookLogs.length > MAX_LOGS) webhookLogs.pop();
+
+    return NextResponse.json({ error: 'Webhook processing failed', detail: error.message }, { status: 500 });
   }
 }
 
-// GET - for webhook verification / testing
+// GET - status check + webhook logs for debugging
 export async function GET() {
   return NextResponse.json({
     service: 'Sikependudukan WA Bot',
     status: 'active',
+    api_key_valid: FONNTE_API_KEY.startsWith('Qpd7'),
+    webhook_url: 'https://sikependudukan.vercel.app/api/wa/webhook',
     commands: ['#NIK', '#CARI', '#STATISTIK', '#KAS', '#SEMENTARA', '#BANTUAN', '#HELP'],
+    recent_webhooks: webhookLogs.slice(0, 10),
+    total_webhooks_received: webhookLogs.length,
   });
 }
