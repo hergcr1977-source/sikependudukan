@@ -41,6 +41,7 @@ import {
   STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
 import { hitungUmur, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
+import { apiFetch } from '@/lib/api';
 
 interface Penduduk {
   id: number;
@@ -111,9 +112,10 @@ const defaultFormData = {
 
 interface TabPendudukProps {
   isAdmin?: boolean;
+  isActive?: boolean;
 }
 
-export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
+export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPendudukProps) {
   const [penduduk, setPenduduk] = useState<Penduduk[]>([]);
   const [kkGroups, setKKGroups] = useState<KKGroup[]>([]);
   const [search, setSearch] = useState('');
@@ -160,7 +162,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
   const fetchPenduduk = useCallback(async () => {
     try {
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const res = await fetch(`/api/penduduk${params}`);
+      const res = await apiFetch(`/api/penduduk${params}`);
       if (res.ok) {
         const data = await res.json();
         setPenduduk(data);
@@ -211,6 +213,10 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
     window.addEventListener('sikependudukan-data-changed', handler);
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchPenduduk]);
+
+  useEffect(() => {
+    if (isActive) fetchPenduduk();
+  }, [isActive, fetchPenduduk]);
 
   const openAddForm = (noKK?: string, isAnggota?: boolean) => {
     setEditingId(null);
@@ -329,7 +335,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
     try {
       // --- Submit KK Head or Edit ---
       if (editingId) {
-        const res = await fetch('/api/penduduk', {
+        const res = await apiFetch('/api/penduduk', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingId, ...formData }),
@@ -359,7 +365,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
           setSubmitting(false);
           return;
         }
-        const res = await fetch('/api/penduduk', {
+        const res = await apiFetch('/api/penduduk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
@@ -411,7 +417,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       }
 
       // Submit KK head
-      const headRes = await fetch('/api/penduduk', {
+      const headRes = await apiFetch('/api/penduduk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -429,7 +435,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
       for (let i = 0; i < anggotaList.length; i++) {
         const a = { ...anggotaList[i], noKK: formData.noKK };
         try {
-          const res = await fetch('/api/penduduk', {
+          const res = await apiFetch('/api/penduduk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(a),
@@ -468,7 +474,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(`/api/penduduk?id=${deleteTarget.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/penduduk?id=${deleteTarget.id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Data berhasil dihapus');
         setDeleteTarget(null);
@@ -489,7 +495,7 @@ export default function TabPenduduk({ isAdmin = true }: TabPendudukProps) {
     formDataImport.append('file', file);
 
     try {
-      const res = await fetch('/api/penduduk/import', { method: 'POST', body: formDataImport });
+      const res = await apiFetch('/api/penduduk/import', { method: 'POST', body: formDataImport });
       if (res.ok) {
         const data = await res.json();
         toast.success(data.message);

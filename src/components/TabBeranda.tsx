@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Trash2, AlertTriangle, Loader2, Database } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface Statistik {
   totalKK: number;
@@ -69,7 +70,7 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
 
   const fetchStatistik = async () => {
     try {
-      const res = await fetch('/api/statistik');
+      const res = await apiFetch('/api/statistik');
       if (res.ok) {
         const data = await res.json();
         setStatistik(data);
@@ -88,7 +89,7 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
     setDeleting(true);
     setDeleteMsg('');
     try {
-      const res = await fetch('/api/penduduk?all=true', { method: 'DELETE' });
+      const res = await apiFetch('/api/penduduk?all=true', { method: 'DELETE' });
       if (res.ok) {
         const result = await res.json();
         setDeleteMsg(result.message);

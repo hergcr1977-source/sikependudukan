@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileSpreadsheet, Download, Loader2, Save, Trash2, Eye, CheckCircle2, Archive, Printer } from 'lucide-react';
 import { BULAN } from '@/lib/constants';
+import { apiFetch } from '@/lib/api';
 
 interface AgeRow {
   label: string;
@@ -60,9 +61,10 @@ const summarySections = [
 
 interface TabLaporanProps {
   isAdmin?: boolean;
+  isActive?: boolean;
 }
 
-export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
+export default function TabLaporan({ isAdmin = true, isActive = false }: TabLaporanProps) {
   const now = new Date();
   const [bulan, setBulan] = useState(String(now.getMonth() + 1));
   const [tahun, setTahun] = useState(String(now.getFullYear()));
@@ -79,7 +81,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
   // Load saved list on mount
   const loadSavedLaporan = async () => {
     try {
-      const res = await fetch('/api/laporan/save');
+      const res = await apiFetch('/api/laporan/save');
       if (res.ok) setSavedLaporan(await res.json());
     } catch (error) {
       console.error(error);
@@ -89,6 +91,10 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
   useEffect(() => {
     loadSavedLaporan();
   }, []);
+
+  useEffect(() => {
+    if (isActive) loadSavedLaporan();
+  }, [isActive]);
 
   // Load keterangan for current bulan/tahun
   const loadKeterangan = (b: string, t: string) => {
@@ -102,7 +108,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
     setLoading(true);
     setSaveMsg('');
     try {
-      const res = await fetch(`/api/laporan?bulan=${bulan}&tahun=${tahun}`);
+      const res = await apiFetch(`/api/laporan?bulan=${bulan}&tahun=${tahun}`);
       if (res.ok) {
         setLaporanData(await res.json());
         loadKeterangan(bulan, tahun);
@@ -117,7 +123,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
   const exportExcel = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`/api/laporan/export?bulan=${bulan}&tahun=${tahun}`);
+      const res = await apiFetch(`/api/laporan/export?bulan=${bulan}&tahun=${tahun}`);
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -140,7 +146,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
     setSaving(true);
     setSaveMsg('');
     try {
-      const res = await fetch('/api/laporan/save', {
+      const res = await apiFetch('/api/laporan/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bulan: parseInt(bulan), tahun: parseInt(tahun), keterangan }),
@@ -161,7 +167,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
   const simpanKeterangan = async () => {
     setSavingKeterangan(true);
     try {
-      const res = await fetch('/api/laporan/save', {
+      const res = await apiFetch('/api/laporan/save', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bulan: parseInt(bulan), tahun: parseInt(tahun), keterangan }),
@@ -179,7 +185,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
   const hapusLaporan = async (id: number) => {
     if (!confirm('Hapus laporan tersimpan ini?')) return;
     try {
-      const res = await fetch(`/api/laporan/save?id=${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/laporan/save?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         loadSavedLaporan();
         setSaveMsg('Laporan berhasil dihapus');
@@ -194,7 +200,7 @@ export default function TabLaporan({ isAdmin = true }: TabLaporanProps) {
     setTahun(String(savedTahun));
     setLoading(true);
     try {
-      const res = await fetch(`/api/laporan?bulan=${savedBulan}&tahun=${savedTahun}`);
+      const res = await apiFetch(`/api/laporan?bulan=${savedBulan}&tahun=${savedTahun}`);
       if (res.ok) {
         const data = await res.json();
         setLaporanData(data);

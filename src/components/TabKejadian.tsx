@@ -38,6 +38,7 @@ import {
   STATUS_PERKAWINAN, BANTUAN_OPTIONS, STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
 import { formatTanggal } from '@/lib/utils-kependudukan';
+import { apiFetch } from '@/lib/api';
 
 interface Kejadian {
   id: number;
@@ -116,9 +117,10 @@ const defaultForm: FormKejadian = {
 
 interface TabKejadianProps {
   isAdmin?: boolean;
+  isActive?: boolean;
 }
 
-export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
+export default function TabKejadian({ isAdmin = true, isActive = false }: TabKejadianProps) {
   const [kejadian, setKejadian] = useState<Kejadian[]>([]);
   const [activeTab, setActiveTab] = useState<string>('LAHIR');
   const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
 
   const fetchKKOptions = useCallback(async () => {
     try {
-      const res = await fetch('/api/penduduk');
+      const res = await apiFetch('/api/penduduk');
       if (res.ok) {
         const data = await res.json();
         setAllPenduduk(data);
@@ -170,7 +172,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/kejadian?jenis=${activeTab}`);
+      const res = await apiFetch(`/api/kejadian?jenis=${activeTab}`);
       if (res.ok) setKejadian(await res.json());
     } catch (error) {
       console.error(error);
@@ -188,6 +190,10 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
     window.addEventListener('sikependudukan-data-changed', handler);
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchKKOptions, fetchData]);
+
+  useEffect(() => {
+    if (isActive) { fetchKKOptions(); fetchData(); }
+  }, [isActive, fetchKKOptions, fetchData]);
 
   const kkMembers = allPenduduk.filter(p => p.noKK === formData.noKK);
 
@@ -328,7 +334,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
         ? { id: editingId, ...formData }
         : { ...formData, modeDatang };
 
-      const res = await fetch('/api/kejadian', {
+      const res = await apiFetch('/api/kejadian', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -370,7 +376,7 @@ export default function TabKejadian({ isAdmin = true }: TabKejadianProps) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await fetch(`/api/kejadian?id=${deleteTarget.id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/kejadian?id=${deleteTarget.id}`, { method: 'DELETE' });
     if (res.ok) {
       toast.success('Kejadian dihapus');
       setDeleteTarget(null);

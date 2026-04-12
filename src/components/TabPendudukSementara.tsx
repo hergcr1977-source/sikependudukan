@@ -41,6 +41,7 @@ import {
   KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
 } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
+import { apiFetch } from '@/lib/api';
 
 interface PendudukSementara {
   id: number;
@@ -117,9 +118,10 @@ const defaultFormData = {
 
 interface TabPendudukSementaraProps {
   isAdmin?: boolean;
+  isActive?: boolean;
 }
 
-export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSementaraProps) {
+export default function TabPendudukSementara({ isAdmin = true, isActive = false }: TabPendudukSementaraProps) {
   const [data, setData] = useState<PendudukSementara[]>([]);
   const [kkGroups, setKKGroups] = useState<KKGroup[]>([]);
   const [filterStatus, setFilterStatus] = useState('');
@@ -143,7 +145,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
       const params = new URLSearchParams();
       if (filterStatus) params.set('status', filterStatus);
       if (search) params.set('search', search);
-      const res = await fetch(`/api/penduduk-sementara?${params}`);
+      const res = await apiFetch(`/api/penduduk-sementara?${params}`);
       if (res.ok) {
         const result = await res.json();
         setData(result);
@@ -192,6 +194,10 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
     window.addEventListener('sikependudukan-data-changed', handler);
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchData]);
+
+  useEffect(() => {
+    if (isActive) fetchData();
+  }, [isActive, fetchData]);
 
   const openAdd = (noKK?: string) => {
     setEditingId(null);
@@ -247,7 +253,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
     try {
       const method = editingId ? 'PUT' : 'POST';
       const body = editingId ? { id: editingId, ...formData } : formData;
-      const res = await fetch('/api/penduduk-sementara', {
+      const res = await apiFetch('/api/penduduk-sementara', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -268,7 +274,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await fetch(`/api/penduduk-sementara?id=${deleteTarget.id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/penduduk-sementara?id=${deleteTarget.id}`, { method: 'DELETE' });
     if (res.ok) {
       toast.success('Data berhasil dihapus');
       setDeleteTarget(null);
@@ -286,7 +292,7 @@ export default function TabPendudukSementara({ isAdmin = true }: TabPendudukSeme
     form.append('file', file);
 
     try {
-      const res = await fetch('/api/penduduk-sementara/import', { method: 'POST', body: form });
+      const res = await apiFetch('/api/penduduk-sementara/import', { method: 'POST', body: form });
       if (res.ok) {
         const result = await res.json();
         toast.success(result.message);

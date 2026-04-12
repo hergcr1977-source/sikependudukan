@@ -34,6 +34,7 @@ import {
 import { toast } from 'sonner';
 import { BANTUAN_OPTIONS, BPJS_OPTIONS, DESIL_OPTIONS } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
+import { apiFetch } from '@/lib/api';
 
 interface Penduduk {
   id: number;
@@ -68,9 +69,10 @@ interface KKGroup {
 
 interface TabBantuanProps {
   isAdmin?: boolean;
+  isActive?: boolean;
 }
 
-export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
+export default function TabBantuan({ isAdmin = true, isActive = false }: TabBantuanProps) {
   const [penduduk, setPenduduk] = useState<Penduduk[]>([]);
   const [kkGroups, setKKGroups] = useState<KKGroup[]>([]);
   const [search, setSearch] = useState('');
@@ -90,7 +92,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   const fetchPenduduk = useCallback(async () => {
     try {
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const res = await fetch(`/api/penduduk${params}`);
+      const res = await apiFetch(`/api/penduduk${params}`);
       if (res.ok) {
         const data = await res.json();
         setPenduduk(data);
@@ -135,7 +137,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
   useEffect(() => {
     const init = async () => {
       try {
-        await fetch('/api/setup-db');
+        await apiFetch('/api/setup-db');
       } catch { /* ignore */ }
       setDbReady(true);
     };
@@ -152,6 +154,10 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
     window.addEventListener('sikependudukan-data-changed', handler);
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchPenduduk]);
+
+  useEffect(() => {
+    if (isActive) fetchPenduduk();
+  }, [isActive, fetchPenduduk]);
 
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);
@@ -213,7 +219,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
       }
 
       // 1. Update penduduk yang dipilih
-      const res = await fetch('/api/penduduk', {
+      const res = await apiFetch('/api/penduduk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -227,7 +233,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
 
       if (res.ok) {
         // 2. Otomatis update semua anggota KK dengan data yang sama
-        const allPenduduk = await fetch('/api/penduduk').then(r => r.json());
+        const allPenduduk = await apiFetch('/api/penduduk').then(r => r.json());
         const anggota = allPenduduk.filter(
           (p: Penduduk) =>
             p.noKK === updateTarget.noKK &&
@@ -243,7 +249,7 @@ export default function TabBantuan({ isAdmin = true }: TabBantuanProps) {
             ketAnggota = ketAnggota ? `${ketAnggota}, ${desilValue}` : desilValue;
           }
 
-          const aRes = await fetch('/api/penduduk', {
+          const aRes = await apiFetch('/api/penduduk', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

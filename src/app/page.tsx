@@ -152,19 +152,19 @@ export default function Home() {
             <TabBeranda isAdmin={isAdmin} isActive={activeTab === 'beranda'} />
           </TabsContent>
           <TabsContent value="penduduk">
-            <TabPenduduk isAdmin={isAdmin} />
+            <TabPenduduk isAdmin={isAdmin} isActive={activeTab === 'penduduk'} />
           </TabsContent>
           <TabsContent value="sementara">
-            <TabPendudukSementara isAdmin={isAdmin} />
+            <TabPendudukSementara isAdmin={isAdmin} isActive={activeTab === 'sementara'} />
           </TabsContent>
           <TabsContent value="kejadian">
-            <TabKejadian isAdmin={isAdmin} />
+            <TabKejadian isAdmin={isAdmin} isActive={activeTab === 'kejadian'} />
           </TabsContent>
           <TabsContent value="bantuan">
-            <TabBantuan isAdmin={isAdmin} />
+            <TabBantuan isAdmin={isAdmin} isActive={activeTab === 'bantuan'} />
           </TabsContent>
           <TabsContent value="laporan">
-            <TabLaporan isAdmin={isAdmin} />
+            <TabLaporan isAdmin={isAdmin} isActive={activeTab === 'laporan'} />
           </TabsContent>
         </Tabs>
       </div>
