@@ -440,14 +440,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`WA message from ${senderName} (${phone}): "${message}"`);
 
-    // Process the command asynchronously (don't block webhook response)
-    // Use setImmediate or fire-and-forget pattern
-    processCommand(phone, message).catch(err => {
-      console.error('Async command processing error:', err);
-    });
+    // MUST await the command processing on Vercel serverless!
+    // Fire-and-forget doesn't work because Vercel freezes the execution
+    // context once the response is sent.
+    await processCommand(phone, message);
 
-    // Respond immediately to Fonnte webhook
-    return NextResponse.json({ status: 'received' });
+    return NextResponse.json({ status: 'received', processed: true });
   } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
