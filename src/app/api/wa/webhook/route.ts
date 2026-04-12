@@ -3,7 +3,8 @@
  * 
  * Commands available:
  * #HELP            - Menu bantuan
- * #BANTUAN         - Desil, jenis bantuan, jenis BPJS
+ * #BANTUAN         - Desil, jenis bantuan, jenis BPJS (semua penduduk)
+ * #BANTUAN <nik>    - Desil, bantuan, BPJS per NIK
  * #NIK <nik>       - Data penduduk berdasarkan NIK
  * #KK <no_kk>      - Semua penduduk sesuai No. KK
  * #KAS             - Info kas RT bulan ini (pemasukan & pengeluaran)
@@ -97,7 +98,11 @@ RT.001 RW.002
    Data desil, jenis bantuan, dan BPJS
    (gabungan penduduk tetap & sementara)
 
-5. *#KAS*
+5. *#BANTUAN <nik>*
+   Cek bantuan, BPJS, dan desil per NIK
+   Contoh: #BANTUAN 3201010101010001
+
+6. *#KAS*
    Info kas RT bulan ini
 
 _Data mencakup Penduduk Tetap & Sementara_
@@ -405,6 +410,66 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
   return await sendWaMessage(phone, msg);
 }
 
+async function handleBantuanNik(phone: string, nik: string) {
+  if (!/^\d{16}$/.test(nik)) {
+    return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #BANTUAN 3201010101010001`);
+  }
+
+  // Cari di Penduduk dulu, lalu PendudukSementara
+  const penduduk = await db.$queryRawUnsafe(
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 LIMIT 1`, nik
+  ) as any[];
+
+  let p: any = null;
+  let isSementara = false;
+
+  if (penduduk && penduduk.length > 0) {
+    p = penduduk[0];
+  } else {
+    const sem = await db.$queryRawUnsafe(
+      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 LIMIT 1`, nik
+    ) as any[];
+    if (sem && sem.length > 0) {
+      p = sem[0];
+      isSementara = true;
+    }
+  }
+
+  if (!p) {
+    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
+  }
+
+  // Parse bantuan
+  const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
+  const bantuanStr = bantuanArr.length > 0 ? bantuanArr.map((b: string) => `- ${b}`).join('\n  ') : '_Tidak menerima bantuan_';
+
+  // BPJS
+  const bpjsStr = p.bpjs && p.bpjs !== '' ? p.bpjs : '_Tidak memiliki BPJS_';
+
+  // Desil (hanya Penduduk Tetap)
+  const desilStr = isSementara ? '_Data desil khusus Penduduk Tetap_' : (p.desil && p.desil !== '' ? p.desil : '_Tidak ada data desil_');
+
+  let msg = `*DATA BANTUAN SOSIAL & BPJS*
+━━━━━━━━━━━━━━━━━
+*Nama:* ${p.namaLengkap || '-'}
+*NIK:* ${p.nik}
+*Status:* ${isSementara ? 'Penduduk Sementara' : 'Penduduk Tetap'}
+
+*DESKRIPSI KEMISKINAN (DESLIL):*
+  ${desilStr}
+
+*JENIS BANTUAN YANG DITERIMA:*
+  ${bantuanStr}
+
+*KEPEMILIKAN BPJS:*
+  ${bpjsStr}
+
+━━━━━━━━━━━━━━━━━
+_Data dari Sistem Kependudukan RT.001 RW.002_`;
+
+  return await sendWaMessage(phone, msg);
+}
+
 async function handleKasRT(phone: string) {
   const now = new Date();
   const bulan = now.getMonth() + 1;
@@ -482,6 +547,9 @@ async function processCommand(phone: string, message: string) {
   } else if (text.startsWith('#KK ')) {
     const noKK = message.trim().substring(4).trim();
     return await handleCekKK(phone, noKK);
+  } else if (text.startsWith('#BANTUAN ')) {
+    const nik = text.replace('#BANTUAN ', '').trim();
+    return await handleBantuanNik(phone, nik);
   } else if (text === '#BANTUAN') {
     return await handleBantuan(phone);
   } else if (text === '#KAS') {
@@ -717,7 +785,7 @@ export async function GET() {
     status: 'active',
     api_key_valid: FONNTE_API_KEY.startsWith('Qpd7'),
     webhook_url: 'https://sikependudukan.vercel.app/api/wa/webhook',
-    commands: ['#HELP', '#NIK', '#KK', '#BANTUAN', '#KAS'],
+    commands: ['#HELP', '#NIK', '#KK', '#BANTUAN', '#BANTUAN <nik>', '#KAS'],
     recent_webhooks: webhookLogs.slice(0, 10),
     total_webhooks_received: webhookLogs.length,
   });
