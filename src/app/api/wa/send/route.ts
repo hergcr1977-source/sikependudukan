@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const FONNTE_API_KEY = process.env.FONNTE_API_KEY || 'TwHzQtpypGU1t9p89UtUw';
+const FONNTE_API_KEY = process.env.FONNTE_API_KEY || 'Qpd7Wq4tJLHQF6qNVo5S';
 const FONNTE_SEND_URL = 'https://api.fonnte.com/send';
 
 // POST - kirim pesan WA ke satu nomor
