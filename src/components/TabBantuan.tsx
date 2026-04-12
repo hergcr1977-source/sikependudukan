@@ -435,15 +435,15 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                   {isExpanded && (
                     <div className="border-t border-gray-100 bg-gray-50/50">
                       {/* Table Header */}
-                      <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto_auto] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
-                        <span className="w-6">No</span>
+                      <div className="hidden sm:grid grid-cols-[24px_1fr_60px_36px_52px_1fr_80px_52px] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
+                        <span>No</span>
                         <span>Nama / NIK</span>
-                        <span className="w-16 text-center">Status</span>
-                        <span className="w-10 text-center">JK</span>
-                        <span className="w-16 text-center">Desil</span>
-                        <span className="w-32 text-center">Bantuan</span>
-                        <span className="w-24 text-center">BPJS</span>
-                        <span className="w-14"></span>
+                        <span className="text-center">Status</span>
+                        <span className="text-center">JK</span>
+                        <span className="text-center">Desil</span>
+                        <span className="text-center">Bantuan</span>
+                        <span className="text-center">BPJS</span>
+                        <span></span>
                       </div>
 
                       {/* KK Head Row */}
@@ -632,8 +632,8 @@ function PendudukRow({
   return (
     <div className="border-b border-gray-100 last:border-b-0 hover:bg-white transition-colors">
       {/* Desktop: Grid Row */}
-      <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto_auto] gap-2 items-center px-3 py-2">
-        <span className="text-[11px] text-muted-foreground w-6">{index}</span>
+      <div className="hidden sm:grid grid-cols-[24px_1fr_60px_36px_52px_1fr_80px_52px] gap-2 items-center px-3 py-2">
+        <span className="text-[11px] text-muted-foreground">{index}</span>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
@@ -643,11 +643,11 @@ function PendudukRow({
           </div>
           <p className="text-[10px] text-muted-foreground font-mono">{p.nik}</p>
         </div>
-        <span className="text-[10px] text-muted-foreground w-16 text-center">{p.statusKeluarga}</span>
-        <span className="text-[10px] w-10 text-center">{p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}</span>
-        <div className="w-16 text-center">{renderDesilBadge(p.desil)}</div>
-        <div className="w-32">{renderBantuanBadges(p.bantuan)}</div>
-        <div className="w-24">{renderBPJSBadge(p.bpjs)}</div>
+        <span className="text-[10px] text-muted-foreground text-center">{p.statusKeluarga}</span>
+        <span className="text-[10px] text-center">{p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}</span>
+        <div className="text-center">{renderDesilBadge(p.desil)}</div>
+        <div>{renderBantuanBadges(p.bantuan)}</div>
+        <div className="text-center">{renderBPJSBadge(p.bpjs)}</div>
         {isAdmin && (
           <div className="flex gap-1 shrink-0">
             <Button
