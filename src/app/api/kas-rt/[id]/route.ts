@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { db } from '@/lib/db';
 
 // PUT - update data kas
 export async function PUT(request: NextRequest) {
@@ -13,12 +11,12 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'ID wajib diisi' }, { status: 400 });
     }
 
-    const existing = await prisma.kasRT.findUnique({ where: { id: Number(id) } });
+    const existing = await db.kasRT.findUnique({ where: { id: Number(id) } });
     if (!existing) {
       return NextResponse.json({ error: 'Data kas tidak ditemukan' }, { status: 404 });
     }
 
-    const kas = await prisma.kasRT.update({
+    const kas = await db.kasRT.update({
       where: { id: Number(id) },
       data: {
         ...(tanggal && { tanggal: new Date(tanggal) }),
@@ -45,12 +43,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID wajib diisi' }, { status: 400 });
     }
 
-    const existing = await prisma.kasRT.findUnique({ where: { id: Number(id) } });
+    const existing = await db.kasRT.findUnique({ where: { id: Number(id) } });
     if (!existing) {
       return NextResponse.json({ error: 'Data kas tidak ditemukan' }, { status: 404 });
     }
 
-    await prisma.kasRT.delete({ where: { id: Number(id) } });
+    await db.kasRT.delete({ where: { id: Number(id) } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

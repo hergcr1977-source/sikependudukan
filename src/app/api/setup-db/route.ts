@@ -110,7 +110,7 @@ export async function GET() {
             "jumlah" INTEGER NOT NULL,
             "keterangan" TEXT NOT NULL DEFAULT '',
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
         `);
         results.push('Created table KasRT');
