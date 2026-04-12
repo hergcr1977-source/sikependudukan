@@ -93,8 +93,34 @@ export async function GET() {
     }
 
     // LaporanBulanan columns
-    const result = await ensureColumn('LaporanBulanan', 'keterangan', 'TEXT');
-    if (result) results.push(result);
+    const laporanResult = await ensureColumn('LaporanBulanan', 'keterangan', 'TEXT');
+    if (laporanResult) results.push(laporanResult);
+
+    // KasRT table - create if not exists
+    try {
+      const tableCheck = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
+        `SELECT table_name FROM information_schema.tables WHERE table_name = 'kasrt'`
+      );
+      if (tableCheck.length === 0) {
+        await db.$executeRawUnsafe(`
+          CREATE TABLE "KasRT" (
+            "id" SERIAL PRIMARY KEY,
+            "tanggal" TIMESTAMP(3) NOT NULL,
+            "jenis" TEXT NOT NULL,
+            "jumlah" INTEGER NOT NULL,
+            "keterangan" TEXT NOT NULL DEFAULT '',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL
+          )
+        `);
+        results.push('Created table KasRT');
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('already exists')) {
+        results.push(`Error creating KasRT: ${msg.substring(0, 100)}`);
+      }
+    }
 
     return NextResponse.json({
       message: 'Database siap.',

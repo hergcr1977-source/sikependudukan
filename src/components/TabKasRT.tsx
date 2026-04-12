@@ -75,6 +75,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
   const now = new Date();
   const [data, setData] = useState<KasEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbReady, setDbReady] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formType, setFormType] = useState<'PEMASUKAN' | 'PENGELUARAN'>('PEMASUKAN');
@@ -112,9 +113,20 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     }
   }, [filterBulan, filterTahun, sortAsc]);
 
+  // Setup database dulu, baru fetch data
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const init = async () => {
+      try {
+        await apiFetch('/api/setup-db');
+      } catch { /* ignore */ }
+      setDbReady(true);
+    };
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (dbReady) fetchData();
+  }, [dbReady, fetchData]);
 
   // Listen for data changes
   useEffect(() => {
