@@ -435,7 +435,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                   {isExpanded && (
                     <div className="border-t border-gray-100 bg-gray-50/50">
                       {/* Table Header */}
-                      <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
+                      <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto_auto] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
                         <span className="w-6">No</span>
                         <span>Nama / NIK</span>
                         <span className="w-16 text-center">Status</span>
@@ -443,6 +443,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                         <span className="w-16 text-center">Desil</span>
                         <span className="w-32 text-center">Bantuan</span>
                         <span className="w-24 text-center">BPJS</span>
+                        <span className="w-14"></span>
                       </div>
 
                       {/* KK Head Row */}
