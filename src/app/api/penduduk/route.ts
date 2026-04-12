@@ -204,11 +204,22 @@ if (deleteAll === 'true') {
       const countSementara = await db.pendudukSementara.count();
       const countKejadian = await db.kejadian.count();
       const countLaporan = await db.laporanBulanan.count();
+      let countKasRT = 0;
 
       await db.penduduk.deleteMany();
       await db.pendudukSementara.deleteMany();
       await db.kejadian.deleteMany();
       await db.laporanBulanan.deleteMany();
+
+      // Hapus data KasRT via raw SQL (tabel mungkin dibuat manual)
+      try {
+        const kasResult = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "KasRT"`);
+        countKasRT = (kasResult as any[])[0]?.count || 0;
+        await db.$executeRawUnsafe(`DELETE FROM "KasRT"`);
+      } catch (e) {
+        // Tabel KasRT mungkin belum ada, abaikan
+        console.log('KasRT table not found during delete all, skipping.');
+      }
 
       revalidatePath('/api/penduduk');
       revalidatePath('/api/penduduk-sementara');
@@ -216,7 +227,7 @@ if (deleteAll === 'true') {
       revalidatePath('/api/statistik');
 
       return NextResponse.json({
-        message: `Seluruh data berhasil dihapus: ${countPenduduk} penduduk, ${countSementara} penduduk sementara, ${countKejadian} kejadian, ${countLaporan} laporan tersimpan`
+        message: `Seluruh data berhasil dihapus: ${countPenduduk} penduduk, ${countSementara} penduduk sementara, ${countKejadian} kejadian, ${countLaporan} laporan, ${countKasRT} kas RT`
       });
     }
 

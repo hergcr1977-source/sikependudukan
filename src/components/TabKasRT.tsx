@@ -187,10 +187,11 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     try {
       const method = editingId ? 'PUT' : 'POST';
       const body = editingId
-        ? { id: editingId, tanggal: formTanggal, jenis: formType, jumlah: Number(formJumlah), keterangan: formKeterangan }
+        ? { tanggal: formTanggal, jenis: formType, jumlah: Number(formJumlah), keterangan: formKeterangan }
         : { tanggal: formTanggal, jenis: formType, jumlah: Number(formJumlah), keterangan: formKeterangan };
 
-      const res = await apiFetch('/api/kas-rt', {
+      const url = editingId ? `/api/kas-rt/${editingId}` : '/api/kas-rt';
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -215,7 +216,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const res = await apiFetch(`/api/kas-rt?id=${deleteTarget.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/kas-rt/${deleteTarget.id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Data kas berhasil dihapus');
         setDeleteTarget(null);

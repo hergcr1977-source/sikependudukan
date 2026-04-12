@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
 // PUT - update data kas
-export async function PUT(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
+    const id = params.id;
     const body = await request.json();
-    const { id, tanggal, jenis, jumlah, keterangan } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID wajib diisi' }, { status: 400 });
-    }
+    const { tanggal, jenis, jumlah, keterangan } = body;
 
     // Cek data ada
     const existing = await db.$queryRawUnsafe(
@@ -60,14 +60,12 @@ export async function PUT(request: NextRequest) {
 }
 
 // DELETE - hapus data kas
-export async function DELETE(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID wajib diisi' }, { status: 400 });
-    }
+    const id = params.id;
 
     // Cek data ada
     const existing = await db.$queryRawUnsafe(
