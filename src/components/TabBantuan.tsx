@@ -59,6 +59,8 @@ interface Penduduk {
   bpjs: string | null;
   desil: string | null;
   keterangan: string | null;
+  // Internal marker
+  _isSementara?: boolean;
 }
 
 interface KKGroup {
@@ -92,12 +94,22 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
   const fetchPenduduk = useCallback(async () => {
     try {
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const res = await apiFetch(`/api/penduduk${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPenduduk(data);
-        groupByKK(data);
-      }
+
+      // Fetch penduduk tetap
+      const resTetap = await apiFetch(`/api/penduduk${params}`);
+      const dataTetap: Penduduk[] = resTetap.ok ? await resTetap.json() : [];
+
+      // Fetch penduduk sementara
+      const resSem = await apiFetch(`/api/penduduk-sementara${params}`);
+      const dataSem: Penduduk[] = resSem.ok ? await resSem.json() : [];
+
+      // Tandai penduduk sementara
+      dataSem.forEach(p => { p._isSementara = true; });
+
+      // Gabungkan
+      const allData = [...dataTetap, ...dataSem];
+      setPenduduk(allData);
+      groupByKK(allData);
     } catch (error) {
       console.error(error);
     } finally {
@@ -218,22 +230,30 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
         keteranganValue = keteranganValue ? `${keteranganValue}, ${desilValue}` : desilValue;
       }
 
+      const isSementara = updateTarget._isSementara || false;
+      const apiUrl = isSementara ? '/api/penduduk-sementara' : '/api/penduduk';
+
       // 1. Update penduduk yang dipilih
-      const res = await apiFetch('/api/penduduk', {
+      const bodyPayload: any = {
+        id: updateTarget.id,
+        bantuan: updateBantuan,
+        bpjs: updateBPJS,
+      };
+      // Desil hanya untuk penduduk tetap
+      if (!isSementara) {
+        bodyPayload.desil = desilValue;
+        bodyPayload.keterangan = keteranganValue || null;
+      }
+
+      const res = await apiFetch(apiUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: updateTarget.id,
-          bantuan: updateBantuan,
-          bpjs: updateBPJS,
-          desil: desilValue,
-          keterangan: keteranganValue || null,
-        }),
+        body: JSON.stringify(bodyPayload),
       });
 
       if (res.ok) {
         // 2. Otomatis update semua anggota KK dengan data yang sama
-        const allPenduduk = await apiFetch('/api/penduduk').then(r => r.json());
+        const allPenduduk = await apiFetch(apiUrl).then(r => r.json());
         const anggota = allPenduduk.filter(
           (p: Penduduk) =>
             p.noKK === updateTarget.noKK &&
@@ -242,23 +262,25 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
         let updatedCount = 0;
         for (const a of anggota) {
-          // Hitung keterangan untuk anggota (hapus desil lama, tambah desil baru)
-          let ketAnggota = a.keterangan || '';
-          ketAnggota = ketAnggota.replace(/,?\s*DESIL\s*\d+(-\d+)?/gi, '').replace(/^,|,$/g, '').trim();
-          if (desilValue) {
-            ketAnggota = ketAnggota ? `${ketAnggota}, ${desilValue}` : desilValue;
+          const aBody: any = {
+            id: a.id,
+            bantuan: updateBantuan,
+            bpjs: updateBPJS,
+          };
+          if (!isSementara) {
+            let ketAnggota = a.keterangan || '';
+            ketAnggota = ketAnggota.replace(/,?\s*DESIL\s*\d+(-\d+)?/gi, '').replace(/^,|,$/g, '').trim();
+            if (desilValue) {
+              ketAnggota = ketAnggota ? `${ketAnggota}, ${desilValue}` : desilValue;
+            }
+            aBody.desil = desilValue;
+            aBody.keterangan = ketAnggota || null;
           }
 
-          const aRes = await apiFetch('/api/penduduk', {
+          const aRes = await apiFetch(apiUrl, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: a.id,
-              bantuan: updateBantuan,
-              bpjs: updateBPJS,
-              desil: desilValue,
-              keterangan: ketAnggota || null,
-            }),
+            body: JSON.stringify(aBody),
           });
           if (aRes.ok) updatedCount++;
         }
@@ -281,7 +303,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
   // Export CSV
   const handleExportCSV = () => {
-    const header = 'No,No KK,NIK,Nama Lengkap,Jenis Kelamin,Status Keluarga,Umur,Desil,Bantuan,BPJS,Keterangan\n';
+    const header = 'No,No KK,NIK,Nama Lengkap,Jenis Kelamin,Status Keluarga,Umur,Status Penduduk,Desil,Bantuan,BPJS,Keterangan\n';
     const rows = penduduk.map((p, i) => {
       let umur = { label: '-' };
       try { umur = hitungUmur(p.tanggalLahir); } catch { /* skip */ }
@@ -290,7 +312,8 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
       const bantuanStr = bantuanArr.join('; ') || '-';
       const bpjsStr = (p.bpjs && p.bpjs !== 'TIDAK') ? p.bpjs : '-';
       const desilStr = (p.desil && p.desil !== 'TIDAK_ADA') ? p.desil : '-';
-      return `${i + 1},"${p.noKK}","${p.nik}","${p.namaLengkap}","${p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}","${p.statusKeluarga}","${umur.label}","${desilStr}","${bantuanStr}","${bpjsStr}","${p.keterangan || '-'}"`;
+      const statusStr = p._isSementara ? 'Sementara' : 'Tetap';
+      return `${i + 1},"${p.noKK}","${p.nik}","${p.namaLengkap}","${p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}","${p.statusKeluarga}","${umur.label}","${statusStr}","${desilStr}","${bantuanStr}","${bpjsStr}","${p.keterangan || '-'}"`;
     }).join('\n');
 
     const csv = '\uFEFF' + header + rows;
@@ -348,6 +371,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
           <Shield className="h-5 w-5 text-emerald-600" />
           <h2 className="text-lg font-bold text-emerald-800">Bantuan Sosial & BPJS</h2>
           <Badge variant="secondary" className="text-xs">{penduduk.length} penduduk</Badge>
+          <Badge className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Tetap + Sementara</Badge>
         </div>
         <div className="flex gap-2 items-center">
           <a
@@ -385,6 +409,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
             const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
             const allBantuan = new Set<string>();
             const allMembers = [group.kepala, ...group.anggota].filter(Boolean) as Penduduk[];
+            const hasSementara = allMembers.some(p => p._isSementara);
             allMembers.forEach(p => {
               try {
                 JSON.parse(p.bantuan || '[]').forEach((b: string) => {
@@ -410,6 +435,9 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="font-semibold text-sm truncate">{group.kepala?.namaLengkap || '-'}</p>
                         <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">KK</Badge>
+                        {hasSementara && (
+                          <Badge className="text-[9px] px-1.5 py-0 bg-amber-500 text-white hover:bg-amber-500">SEMENTARA</Badge>
+                        )}
                         {allBantuan.size > 0 && (
                           <div className="flex flex-wrap gap-0.5">
                             {Array.from(allBantuan).map(b => (
@@ -630,7 +658,7 @@ function PendudukRow({
   try { umur = hitungUmur(p.tanggalLahir); } catch { /* skip */ }
 
   return (
-    <div className="border-b border-gray-100 last:border-b-0 hover:bg-white transition-colors">
+    <div className={`border-b border-gray-100 last:border-b-0 hover:bg-white transition-colors${p._isSementara ? ' bg-amber-50/40' : ''}`}>
       {/* Desktop: Grid Row */}
       <div className="hidden sm:grid grid-cols-[24px_1fr_60px_36px_52px_1fr_80px_52px] gap-2 items-center px-3 py-2">
         <span className="text-[11px] text-muted-foreground">{index}</span>
@@ -639,6 +667,9 @@ function PendudukRow({
             <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
             {isKK && (
               <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">KK</Badge>
+            )}
+            {p._isSementara && (
+              <Badge className="text-[8px] px-1.5 py-0 bg-amber-500 text-white hover:bg-amber-500">SEM</Badge>
             )}
           </div>
           <p className="text-[10px] text-muted-foreground font-mono">{p.nik}</p>
@@ -680,6 +711,9 @@ function PendudukRow({
             <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
             {isKK && (
               <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">KK</Badge>
+            )}
+            {p._isSementara && (
+              <Badge className="text-[8px] px-1.5 py-0 bg-amber-500 text-white hover:bg-amber-500">SEM</Badge>
             )}
           </div>
           {isAdmin && (
