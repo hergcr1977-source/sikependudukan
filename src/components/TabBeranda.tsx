@@ -506,13 +506,12 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
             {/* Commands list */}
             <div className="bg-white border border-green-200 rounded-lg p-2.5">
               <p className="text-[10px] font-medium text-green-700 mb-1.5">Perintah Bot (ketik di WA):</p>
-              <div className="grid grid-cols-2 gap-1 text-[10px]">
-                <div><code className="bg-green-50 px-1 rounded">#NIK &lt;nik&gt;</code> Cek data penduduk</div>
-                <div><code className="bg-green-50 px-1 rounded">#CARI &lt;nama&gt;</code> Cari penduduk</div>
-                <div><code className="bg-green-50 px-1 rounded">#STATISTIK</code> Laporan RT</div>
-                <div><code className="bg-green-50 px-1 rounded">#KAS</code> Info kas RT</div>
-                <div><code className="bg-green-50 px-1 rounded">#SEMENTARA</code> Penduduk sementara</div>
-                <div><code className="bg-green-50 px-1 rounded">#BANTUAN</code> Info bansos</div>
+              <div className="space-y-1 text-[10px]">
+                <div><code className="bg-green-50 px-1 rounded">#HELP</code> Menu bantuan</div>
+                <div><code className="bg-green-50 px-1 rounded">#NIK &lt;nik&gt;</code> Data penduduk</div>
+                <div><code className="bg-green-50 px-1 rounded">#KK &lt;no_kk&gt;</code> Data keluarga</div>
+                <div><code className="bg-green-50 px-1 rounded">#BANTUAN</code> Desil, bantuan, BPJS</div>
+                <div><code className="bg-green-50 px-1 rounded">#KAS</code> Kas RT bulan ini</div>
               </div>
             </div>
 
