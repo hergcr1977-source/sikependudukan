@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Trash2, AlertTriangle, Loader2, Database } from 'lucide-react';
+import { Trash2, AlertTriangle, Loader2, Database, MessageSquare, Send, Radio } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface Statistik {
   totalKK: number;
@@ -51,6 +52,15 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteMsg, setDeleteMsg] = useState('');
 
+  // Bot WA state
+  const [botStatus, setBotStatus] = useState<'loading' | 'active' | 'error'>('loading');
+  const [waNumber, setWaNumber] = useState('');
+  const [waMessage, setWaMessage] = useState('');
+  const [sendingWa, setSendingWa] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
+
   useEffect(() => {
     fetchStatistik();
   }, []);
@@ -83,6 +93,84 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
       setLoading(false);
     }
   };
+
+  const checkBotStatus = async () => {
+    try {
+      const res = await apiFetch('/api/wa/webhook');
+      setBotStatus(res.ok ? 'active' : 'error');
+    } catch {
+      setBotStatus('error');
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!waNumber || !waMessage) {
+      toast.error('Nomor WA dan pesan wajib diisi');
+      return;
+    }
+    setSendingWa(true);
+    try {
+      const res = await apiFetch('/api/wa/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: waNumber, message: waMessage }),
+      });
+      const data = await res.json();
+      if (data.status) {
+        toast.success('Pesan berhasil dikirim');
+        setWaMessage('');
+      } else {
+        toast.error(data.reason || 'Gagal mengirim pesan');
+      }
+    } catch {
+      toast.error('Gagal mengirim pesan');
+    } finally {
+      setSendingWa(false);
+    }
+  };
+
+  const handleBroadcast = async () => {
+    if (!broadcastMsg.trim()) {
+      toast.error('Pesan broadcast wajib diisi');
+      return;
+    }
+    setSendingBroadcast(true);
+    try {
+      // Ambil semua nomor HP penduduk yang ada
+      const pendudukRes = await apiFetch('/api/penduduk');
+      if (!pendudukRes.ok) throw new Error('Gagal ambil data penduduk');
+      const penduduk: any[] = await pendudukRes.json();
+      const targets = penduduk
+        .map(p => p.noHP)
+        .filter(hp => hp && hp.length >= 10);
+
+      if (targets.length === 0) {
+        toast.error('Tidak ada nomor HP penduduk yang valid');
+        setSendingBroadcast(false);
+        return;
+      }
+
+      const res = await apiFetch('/api/wa/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets, message: broadcastMsg }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Broadcast berhasil ke ${data.sent} nomor`);
+        setBroadcastOpen(false);
+        setBroadcastMsg('');
+      } else {
+        toast.error('Gagal mengirim broadcast');
+      }
+    } catch {
+      toast.error('Gagal mengirim broadcast');
+    } finally {
+      setSendingBroadcast(false);
+    }
+  };
+
+  useEffect(() => { checkBotStatus(); }, []);
 
   const handleDeleteAll = async () => {
     if (deleteConfirmText !== 'HAPUS') return;
@@ -385,6 +473,125 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
           </div>
         </CardContent>
       </Card>
+
+      {/* ============ BOT WA PANEL ============ */}
+      {isAdmin && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-sm font-semibold text-green-700 flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Bot WhatsApp (Fonnte)
+              <span className={`ml-auto inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                botStatus === 'active' ? 'bg-green-100 text-green-700' :
+                botStatus === 'error' ? 'bg-red-100 text-red-700' :
+                'bg-gray-100 text-gray-500'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  botStatus === 'active' ? 'bg-green-500' :
+                  botStatus === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                }`} />
+                {botStatus === 'active' ? 'Aktif' : botStatus === 'error' ? 'Error' : 'Cek...'}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 space-y-3">
+            {/* Webhook URL */}
+            <div className="bg-white border border-green-200 rounded-lg p-2.5">
+              <p className="text-[10px] font-medium text-green-700 mb-1">Webhook URL (set di Fonnte.com):</p>
+              <p className="text-[10px] font-mono bg-gray-50 p-1.5 rounded break-all text-gray-700 select-all">
+                https://sikependudukan.vercel.app/api/wa/webhook
+              </p>
+            </div>
+
+            {/* Commands list */}
+            <div className="bg-white border border-green-200 rounded-lg p-2.5">
+              <p className="text-[10px] font-medium text-green-700 mb-1.5">Perintah Bot (ketik di WA):</p>
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <div><code className="bg-green-50 px-1 rounded">#NIK &lt;nik&gt;</code> Cek data penduduk</div>
+                <div><code className="bg-green-50 px-1 rounded">#CARI &lt;nama&gt;</code> Cari penduduk</div>
+                <div><code className="bg-green-50 px-1 rounded">#STATISTIK</code> Laporan RT</div>
+                <div><code className="bg-green-50 px-1 rounded">#KAS</code> Info kas RT</div>
+                <div><code className="bg-green-50 px-1 rounded">#SEMENTARA</code> Penduduk sementara</div>
+                <div><code className="bg-green-50 px-1 rounded">#BANTUAN</code> Info bansos</div>
+              </div>
+            </div>
+
+            {/* Kirim Pesan Manual */}
+            <div className="bg-white border border-green-200 rounded-lg p-2.5 space-y-2">
+              <p className="text-[10px] font-medium text-green-700">Kirim Pesan Manual:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="08xxxxxxxxxx"
+                  value={waNumber}
+                  onChange={e => setWaNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                  className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-400"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSendTest}
+                  disabled={sendingWa || !waNumber || !waMessage}
+                  className="bg-green-600 hover:bg-green-700 text-white text-xs gap-1"
+                >
+                  <Send className="h-3 w-3" />
+                  {sendingWa ? 'Kirim...' : 'Kirim'}
+                </Button>
+              </div>
+              <textarea
+                placeholder="Tulis pesan..."
+                value={waMessage}
+                onChange={e => setWaMessage(e.target.value)}
+                rows={2}
+                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-400 resize-none"
+              />
+            </div>
+
+            {/* Broadcast Button */}
+            <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full border-green-300 text-green-700 hover:bg-green-50 text-xs gap-1.5">
+                  <Radio className="h-3.5 w-3.5" />
+                  Broadcast ke Semua Penduduk (No. HP)
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-green-700">
+                    <Radio className="h-5 w-5" />
+                    Broadcast WhatsApp
+                  </DialogTitle>
+                  <DialogDescription>
+                    Pesan akan dikirim ke semua nomor HP penduduk yang terdaftar.
+                  </DialogDescription>
+                </DialogHeader>
+                <textarea
+                  placeholder="Tulis pesan broadcast..."
+                  value={broadcastMsg}
+                  onChange={e => setBroadcastMsg(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                />
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button variant="outline" onClick={() => setBroadcastOpen(false)} disabled={sendingBroadcast}>
+                    Batal
+                  </Button>
+                  <Button
+                    onClick={handleBroadcast}
+                    disabled={sendingBroadcast || !broadcastMsg.trim()}
+                    className="bg-green-600 hover:bg-green-700 gap-1.5"
+                  >
+                    {sendingBroadcast ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Mengirim...</>
+                    ) : (
+                      <><Send className="h-4 w-4" /> Kirim Broadcast</>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2 pt-3 px-4">
