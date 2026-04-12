@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LayoutDashboard, Users, UserRound, CalendarDays, FileSpreadsheet, Shield, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, UserRound, CalendarDays, FileSpreadsheet, Shield, Wallet, LogOut } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { ALAMAT } from '@/lib/constants';
 
@@ -13,6 +13,7 @@ const TabPendudukSementara = dynamic(() => import('@/components/TabPendudukSemen
 const TabKejadian = dynamic(() => import('@/components/TabKejadian'), { ssr: false });
 const TabLaporan = dynamic(() => import('@/components/TabLaporan'), { ssr: false });
 const TabBantuan = dynamic(() => import('@/components/TabBantuan'), { ssr: false });
+const TabKasRT = dynamic(() => import('@/components/TabKasRT'), { ssr: false });
 
 interface AuthState {
   authenticated: boolean;
@@ -103,7 +104,7 @@ export default function Home() {
 
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full grid grid-cols-6 mb-3 h-auto bg-white border shadow-sm rounded-lg p-1">
+          <TabsList className="w-full grid grid-cols-7 mb-3 h-auto bg-white border shadow-sm rounded-lg p-1">
             <TabsTrigger
               value="beranda"
               className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-emerald-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
@@ -146,6 +147,13 @@ export default function Home() {
               <FileSpreadsheet className="h-4 w-4" />
               <span>Laporan</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="kas"
+              className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-emerald-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+            >
+              <Wallet className="h-4 w-4" />
+              <span>Kas RT</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="beranda">
@@ -165,6 +173,9 @@ export default function Home() {
           </TabsContent>
           <TabsContent value="laporan">
             <TabLaporan isAdmin={isAdmin} isActive={activeTab === 'laporan'} />
+          </TabsContent>
+          <TabsContent value="kas">
+            <TabKasRT isAdmin={isAdmin} isActive={activeTab === 'kas'} />
           </TabsContent>
         </Tabs>
       </div>
