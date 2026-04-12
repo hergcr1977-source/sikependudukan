@@ -86,7 +86,7 @@ RT.001 RW.002
    Tampilkan menu ini
 
 2. *#NIK <nik>*
-   Cek data penduduk lengkap
+   Cek data penduduk (tetap & sementara)
    Contoh: #NIK 3201010101010001
 
 3. *#KK <no_kk>*
@@ -95,10 +95,12 @@ RT.001 RW.002
 
 4. *#BANTUAN*
    Data desil, jenis bantuan, dan BPJS
+   (gabungan penduduk tetap & sementara)
 
 5. *#KAS*
    Info kas RT bulan ini
 
+_Data mencakup Penduduk Tetap & Sementara_
 _Powered by Sistem Kependudukan RT.001 RW.002_`;
 
   return await sendWaMessage(phone, msg);
@@ -109,26 +111,75 @@ async function handleCekNik(phone: string, nik: string) {
     return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #NIK 3201010101010001`);
   }
 
+  // Cari di Penduduk dulu, lalu PendudukSementara
   const penduduk = await db.$queryRawUnsafe(
-    `SELECT * FROM "Penduduk" WHERE "nik" = $1 LIMIT 1`, nik
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 LIMIT 1`, nik
   ) as any[];
 
-  if (!penduduk || penduduk.length === 0) {
-    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.`);
+  let p: any = null;
+  let isSementara = false;
+
+  if (penduduk && penduduk.length > 0) {
+    p = penduduk[0];
+  } else {
+    // Cari di PendudukSementara
+    const sem = await db.$queryRawUnsafe(
+      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 LIMIT 1`, nik
+    ) as any[];
+    if (sem && sem.length > 0) {
+      p = sem[0];
+      isSementara = true;
+    }
   }
 
-  const p = penduduk[0];
+  if (!p) {
+    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
+  }
+
   const tanggalLahir = p.tanggalLahir ? formatTanggal(new Date(p.tanggalLahir)) : '-';
   const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
   const bantuanStr = bantuanArr.length > 0 ? bantuanArr.join(', ') : 'Tidak ada';
   const umur = p.tanggalLahir ? Math.floor((Date.now() - new Date(p.tanggalLahir).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+  const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'Laki-laki' : p.jenisKelamin === 'PEREMPUAN' ? 'Perempuan' : '-';
 
-  const msg = `*DATA PENDUDUK*
+  let msg = '';
+  if (isSementara) {
+    // Format khusus Penduduk Sementara
+    const tglMasuk = p.tanggalMasuk ? formatTanggal(new Date(p.tanggalMasuk)) : '-';
+    const tglKeluar = p.tanggalKeluar ? formatTanggal(new Date(p.tanggalKeluar)) : 'Masih tinggal';
+    msg = `*DATA PENDUDUK SEMENTARA*
 ━━━━━━━━━━━━━━━━━
 *Nama:* ${p.namaLengkap || '-'}
 *NIK:* ${p.nik}
 *No. KK:* ${p.noKK}
-*Jenis Kelamin:* ${p.jenisKelamin === 'LAKI-LAKI' ? 'Laki-laki' : p.jenisKelamin === 'PEREMPUAN' ? 'Perempuan' : '-'}
+*Jenis Kelamin:* ${jk}
+*Status Keluarga:* ${p.statusKeluarga || '-'}
+*Tempat/Tgl Lahir:* ${p.tempatLahir || '-'}, ${tanggalLahir}
+*Umur:* ${umur !== null ? `${umur} tahun` : '-'}
+*Agama:* ${p.agama || '-'}
+*Pendidikan:* ${p.pendidikan || '-'}
+*Pekerjaan:* ${p.pekerjaan || '-'}
+*Status Kawin:* ${p.statusPerkawinan || '-'}
+*Kewarganegaraan:* ${p.kewarganegaraan || '-'}
+*No. HP:* ${p.noHP || '-'}
+*BPJS:* ${p.bpjs || '-'}
+*Bantuan:* ${bantuanStr}
+*Status Keterangan:* ${p.statusKeterangan || '-'}
+*Alamat Asal:* ${p.alamatAsal || '-'}
+*Tanggal Masuk:* ${tglMasuk}
+*Tanggal Keluar:* ${tglKeluar}
+*Alamat Saat Ini:* ${p.alamat || '-'}, RT ${p.rt || '-'}/RW ${p.rw || '-'}
+*Keterangan:* ${p.keterangan || '-'}
+━━━━━━━━━━━━━━━━━
+_Data dari Sistem Kependudukan RT.001 RW.002_`;
+  } else {
+    // Format Penduduk Tetap
+    msg = `*DATA PENDUDUK*
+━━━━━━━━━━━━━━━━━
+*Nama:* ${p.namaLengkap || '-'}
+*NIK:* ${p.nik}
+*No. KK:* ${p.noKK}
+*Jenis Kelamin:* ${jk}
 *Status Keluarga:* ${p.statusKeluarga || '-'}
 *Tempat/Tgl Lahir:* ${p.tempatLahir || '-'}, ${tanggalLahir}
 *Umur:* ${umur !== null ? `${umur} tahun` : '-'}
@@ -147,6 +198,7 @@ async function handleCekNik(phone: string, nik: string) {
 *Keterangan:* ${p.keterangan || '-'}
 ━━━━━━━━━━━━━━━━━
 _Data dari Sistem Kependudukan RT.001 RW.002_`;
+  }
 
   return await sendWaMessage(phone, msg);
 }
@@ -158,8 +210,9 @@ async function handleCekKK(phone: string, noKK: string) {
     return await sendWaMessage(phone, `No. KK minimal 15 digit angka.\n\nContoh: #KK 3201010101010001`);
   }
 
-  const anggota = await db.$queryRawUnsafe(
-    `SELECT * FROM "Penduduk" WHERE "noKK" = $1 ORDER BY CASE 
+  // Cari di kedua tabel: Penduduk + PendudukSementara
+  const penduduk = await db.$queryRawUnsafe(
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "noKK" = $1 ORDER BY CASE 
       WHEN "statusKeluarga" = 'KEPALA KELUARGA' THEN 1
       WHEN "statusKeluarga" = 'ISTRI' THEN 2
       WHEN "statusKeluarga" = 'ANAK' THEN 3
@@ -167,27 +220,49 @@ async function handleCekKK(phone: string, noKK: string) {
     END ASC`, kk
   ) as any[];
 
-  if (!anggota || anggota.length === 0) {
-    return await sendWaMessage(phone, `Data penduduk dengan No. KK *${kk}* tidak ditemukan.`);
+  const sementara = await db.$queryRawUnsafe(
+    `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "noKK" = $1 ORDER BY CASE 
+      WHEN "statusKeluarga" = 'KEPALA KELUARGA' THEN 1
+      WHEN "statusKeluarga" = 'ISTRI' THEN 2
+      WHEN "statusKeluarga" = 'ANAK' THEN 3
+      ELSE 4
+    END ASC`, kk
+  ) as any[];
+
+  const anggotaPenduduk = penduduk || [];
+  const anggotaSementara = sementara || [];
+  const totalAnggota = anggotaPenduduk.length + anggotaSementara.length;
+
+  if (totalAnggota === 0) {
+    return await sendWaMessage(phone, `Data penduduk dengan No. KK *${kk}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
   }
+
+  const alamatRef = anggotaPenduduk.length > 0 ? anggotaPenduduk[0] : anggotaSementara[0];
 
   let msg = `*DATA KEPERLUARGAAN*
 ━━━━━━━━━━━━━━━━━
 *No. KK:* ${kk}
-*Jumlah Anggota:* ${anggota.length} orang
-*Alamat:* ${anggota[0].alamat || '-'}, RT ${anggota[0].rt || '-'}/RW ${anggota[0].rw || '-'}
-*Kelurahan:* ${anggota[0].kelurahan || '-'}, ${anggota[0].kecamatan || '-'}
+*Jumlah Anggota:* ${totalAnggota} orang`;
+  if (anggotaSementara.length > 0) {
+    msg += ` (Tetap: ${anggotaPenduduk.length}, Sementara: ${anggotaSementara.length})`;
+  }
+  msg += `\n*Alamat:* ${alamatRef.alamat || '-'}, RT ${alamatRef.rt || '-'}/RW ${alamatRef.rw || '-'}
+*Kelurahan:* ${alamatRef.kelurahan || '-'}, ${alamatRef.kecamatan || '-'}`;
+  msg += `\n\n━━━━━━━━━━━━━━━━━\n`;
 
-━━━━━━━━━━━━━━━━━\n`;
+  let no = 1;
 
-  anggota.forEach((p: any, i: number) => {
-    const tglLahir = p.tanggalLahir ? formatTanggal(new Date(p.tanggalLahir)) : '-';
-    const umur = p.tanggalLahir ? Math.floor((Date.now() - new Date(p.tanggalLahir).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
-    const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P';
-    const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
-    const bantuanStr = bantuanArr.length > 0 ? bantuanArr.join(', ') : '-';
+  // Anggota Penduduk Tetap
+  if (anggotaPenduduk.length > 0) {
+    msg += `*PENDUDUK TETAP:*\n`;
+    anggotaPenduduk.forEach((p: any) => {
+      const tglLahir = p.tanggalLahir ? formatTanggal(new Date(p.tanggalLahir)) : '-';
+      const umur = p.tanggalLahir ? Math.floor((Date.now() - new Date(p.tanggalLahir).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+      const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P';
+      const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
+      const bantuanStr = bantuanArr.length > 0 ? bantuanArr.join(', ') : '-';
 
-    msg += `${i + 1}. *${p.namaLengkap}*
+      msg += `${no}. *${p.namaLengkap}*
    NIK: ${p.nik}
    ${jk} | ${p.statusKeluarga || '-'} | ${umur !== null ? `${umur} thn` : '-'}
    TTL: ${p.tempatLahir || '-'}, ${tglLahir}
@@ -196,7 +271,36 @@ async function handleCekKK(phone: string, noKK: string) {
    KTP: ${p.punyaKTP || '-'} | BPJS: ${p.bpjs || '-'}
    Desil: ${p.desil || '-'} | Bantuan: ${bantuanStr}
    No. HP: ${p.noHP || '-'}\n\n`;
-  });
+      no++;
+    });
+  }
+
+  // Anggota Penduduk Sementara
+  if (anggotaSementara.length > 0) {
+    msg += `*PENDUDUK SEMENTARA:*\n`;
+    anggotaSementara.forEach((p: any) => {
+      const tglLahir = p.tanggalLahir ? formatTanggal(new Date(p.tanggalLahir)) : '-';
+      const umur = p.tanggalLahir ? Math.floor((Date.now() - new Date(p.tanggalLahir).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+      const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P';
+      const bantuanArr = p.bantuan ? JSON.parse(p.bantuan) : [];
+      const bantuanStr = bantuanArr.length > 0 ? bantuanArr.join(', ') : '-';
+      const tglMasuk = p.tanggalMasuk ? formatTanggal(new Date(p.tanggalMasuk)) : '-';
+      const tglKeluar = p.tanggalKeluar ? formatTanggal(new Date(p.tanggalKeluar)) : 'Masih tinggal';
+
+      msg += `${no}. *${p.namaLengkap}* [SEMENTARA]
+   NIK: ${p.nik}
+   ${jk} | ${p.statusKeluarga || '-'} | ${umur !== null ? `${umur} thn` : '-'}
+   TTL: ${p.tempatLahir || '-'}, ${tglLahir}
+   Pendidikan: ${p.pendidikan || '-'}
+   Pekerjaan: ${p.pekerjaan || '-'}
+   BPJS: ${p.bpjs || '-'} | Bantuan: ${bantuanStr}
+   Status: ${p.statusKeterangan || '-'}
+   Alamat Asal: ${p.alamatAsal || '-'}
+   Masuk: ${tglMasuk} | Keluar: ${tglKeluar}
+   No. HP: ${p.noHP || '-'}\n\n`;
+      no++;
+    });
+  }
 
   msg += `━━━━━━━━━━━━━━━━━
 _Data dari Sistem Kependudukan RT.001 RW.002_`;
@@ -205,15 +309,19 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
 }
 
 async function handleBantuan(phone: string) {
-  // 1. Data Desil
+  // 1. Data Desil (hanya dari Penduduk tetap)
   const desilData = await db.$queryRawUnsafe(
     `SELECT "desil", COUNT(*)::int as count FROM "Penduduk" WHERE "desil" IS NOT NULL AND "desil" != '' GROUP BY "desil" ORDER BY "desil" ASC`
   ) as any[];
 
-  // 2. Data Jenis Bantuan
-  const bantuanRows = await db.$queryRawUnsafe(
+  // 2. Data Jenis Bantuan - gabungan Penduduk + PendudukSementara
+  const bantuanRowsPenduduk = await db.$queryRawUnsafe(
     `SELECT "bantuan" FROM "Penduduk" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`
   ) as any[];
+  const bantuanRowsSementara = await db.$queryRawUnsafe(
+    `SELECT "bantuan" FROM "PendudukSementara" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`
+  ) as any[];
+  const bantuanRows = [...bantuanRowsPenduduk, ...bantuanRowsSementara];
 
   const bantuanCount: Record<string, number> = {};
   let totalPenerima = 0;
@@ -229,21 +337,38 @@ async function handleBantuan(phone: string) {
     } catch {}
   });
 
-  // 3. Data BPJS
-  const bpjsData = await db.$queryRawUnsafe(
-    `SELECT "bpjs", COUNT(*)::int as count FROM "Penduduk" WHERE "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs" ORDER BY count DESC`
+  // 3. Data BPJS - gabungan Penduduk + PendudukSementara
+  const bpjsDataPenduduk = await db.$queryRawUnsafe(
+    `SELECT "bpjs", COUNT(*)::int as count FROM "Penduduk" WHERE "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`
+  ) as any[];
+  const bpjsDataSementara = await db.$queryRawUnsafe(
+    `SELECT "bpjs", COUNT(*)::int as count FROM "PendudukSementara" WHERE "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`
   ) as any[];
 
+  // Gabungkan BPJS count
+  const bpjsMerged: Record<string, number> = {};
+  [...bpjsDataPenduduk, ...bpjsDataSementara].forEach((b: any) => {
+    bpjsMerged[b.bpjs] = (bpjsMerged[b.bpjs] || 0) + b.count;
+  });
+  const bpjsData = Object.entries(bpjsMerged).map(([bpjs, count]) => ({ bpjs, count })).sort((a, b) => b.count - a.count);
+
+  // Total penduduk gabungan
   const totalPenduduk = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "Penduduk"`) as any[];
-  const total = totalPenduduk[0]?.count || 0;
+  const totalSementara = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "PendudukSementara"`) as any[];
+  const totalTetap = totalPenduduk[0]?.count || 0;
+  const totalSem = totalSementara[0]?.count || 0;
+  const total = totalTetap + totalSem;
 
   let msg = `*DATA BANTUAN SOSIAL & BPJS*
 ━━━━━━━━━━━━━━━━━
+*Penduduk Tetap:* ${totalTetap} orang
+*Penduduk Sementara:* ${totalSem} orang
 *Total Penduduk:* ${total} orang
 *Penerima Bantuan:* ${totalPenerima} orang (${total > 0 ? Math.round(totalPenerima / total * 100) : 0}%)\n`;
 
   // Desil
-  msg += `\n*DESKRIPSI KEMISKINAN (DESLIL):*\n`;
+  msg += `\n*DESKRIPSI KEMISKINAN (DESLIL):*
+  _(Khusus Penduduk Tetap)_\n`;
   if (desilData.length > 0) {
     desilData.forEach((d: any) => {
       msg += `  ${d.desil}: ${d.count} orang\n`;
@@ -253,7 +378,7 @@ async function handleBantuan(phone: string) {
   }
 
   // Jenis Bantuan
-  msg += `\n*JENIS BANTUAN YANG DITERIMA:*\n`;
+  msg += `\n*JENIS BANTUAN YANG DITERIMA:*\n  _(Tetap + Sementara)_\n`;
   if (Object.keys(bantuanCount).length > 0) {
     Object.entries(bantuanCount)
       .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
@@ -265,7 +390,7 @@ async function handleBantuan(phone: string) {
   }
 
   // BPJS
-  msg += `\n*KEPEMILIKAN BPJS:*\n`;
+  msg += `\n*KEPEMILIKAN BPJS:*\n  _(Tetap + Sementara)_\n`;
   if (bpjsData.length > 0) {
     bpjsData.forEach((b: any) => {
       msg += `  - ${b.bpjs}: ${b.count} orang\n`;
