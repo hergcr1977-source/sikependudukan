@@ -403,6 +403,15 @@ async function processCommand(phone: string, message: string) {
 function extractFromFonnte(body: any): { phone: string; message: string; name: string } | null {
   // Try every possible field combination Fonnte might send
 
+  // Format 0: Fonnte-specific fields (pengirim = sender, pesan = message)
+  if (body.pengirim && (body.pesan || body.message)) {
+    return {
+      phone: body.pengirim || body.sender || body.senderlid || '',
+      message: body.pesan || body.message || '',
+      name: body.name || body.pushName || '',
+    };
+  }
+
   // Format 1: Direct fields (most common)
   if (body.phone && body.message) {
     return {
@@ -515,13 +524,34 @@ export async function POST(request: NextRequest) {
     console.log('Body keys:', Object.keys(body).join(', '));
     console.log('Raw body:', rawBody.substring(0, 500));
 
-    // Skip delivery callbacks / status updates (not incoming messages)
-    if (body.status && body.id && !body.message) {
-      console.log('Skipping delivery callback (status update, not incoming message)');
+    // ===== CRITICAL: Skip non-incoming-message payloads =====
+
+    // 1. Skip device state callbacks (e.g. {"device":"62xxx","stateid":"xxx","state":2})
+    if (body.device && body.stateid && !body.pengirim) {
+      console.log('Skipping device state callback');
+      return NextResponse.json({ status: 'ignored', reason: 'device_state' });
+    }
+
+    // 2. Skip delivery callbacks / status updates
+    if (body.status && body.id && !body.pengirim) {
+      console.log('Skipping delivery callback');
       return NextResponse.json({ status: 'ignored', reason: 'delivery_callback' });
     }
 
-    // Skip if it looks like a device event, not a chat message
+    // 3. Skip OUTGOING messages from our own bot (quick=true means it's a reply we sent)
+    // Fonnte sends our own replies back as webhooks when "Webhook Connect" is ON
+    if (body.quick === true || body.quick === 'true') {
+      console.log('Skipping our own outgoing message (quick=true)');
+      return NextResponse.json({ status: 'ignored', reason: 'outgoing_message' });
+    }
+
+    // 4. Skip if sender matches device (bot replying to itself)
+    if (body.pengirim && body.device && body.pengirim === body.device) {
+      console.log('Skipping self-message (sender = device)');
+      return NextResponse.json({ status: 'ignored', reason: 'self_message' });
+    }
+
+    // 5. Skip event/status notifications
     if (body.event || body.type === 'event' || body.type === 'status') {
       console.log('Skipping event/status notification');
       return NextResponse.json({ status: 'ignored', reason: 'event_notification' });
