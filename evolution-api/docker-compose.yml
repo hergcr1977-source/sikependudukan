@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  evolution-api:
+    image: ghcr.io/evolution-api/evolution-api:v2.2.0
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # Ganti API key ini dengan key Anda sendiri
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-evo_sikependudukan_secret_2026}
+      - TELEMETRY=false
+      - DEL_DELETE_INSTANCES=false
+      - DEL_INSTANCE_EXPIRY=false
+      - QRCODE_LIMIT=10
+    volumes:
+      - evo-store:/evolution/store
+
+volumes:
+  evo-store:
