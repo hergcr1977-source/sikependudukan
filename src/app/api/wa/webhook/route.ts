@@ -501,13 +501,16 @@ async function handleKasRT(phone: string) {
     }
   });
 
-  const saldo = totalMasuk - totalKeluar;
+  const saldoAkhir = totalMasuk - totalKeluar;
+  // Saldo awal = saldo akhir dikurangi total pemasukan (saldo sebelum ada pemasukan)
+  const saldoAwal = saldoAkhir - totalMasuk;
 
   let msg = `*KAS RT - RINGKASAN*
 ━━━━━━━━━━━━━━━━━
-*Total Pemasukan:* Rp ${formatRp(totalMasuk)}
-*Total Pengeluaran:* Rp ${formatRp(totalKeluar)}
-*Saldo:* Rp ${formatRp(saldo)}\n`;
+*Saldo Awal:* Rp ${formatRp(saldoAwal)}
+*+ Total Pemasukan:* Rp ${formatRp(totalMasuk)}
+*- Total Pengeluaran:* Rp ${formatRp(totalKeluar)}
+*= Saldo Akhir:* Rp ${formatRp(saldoAkhir)}\n`;
 
   if (lastMasuk) {
     msg += `\n*PEMASUKAN TERAKHIR:*
