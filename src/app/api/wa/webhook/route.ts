@@ -513,7 +513,6 @@ async function handleKasRT(phone: string) {
   let msg = `*KAS RT - RINGKASAN*
 ━━━━━━━━━━━━━━━━━
 *Saldo Awal:* Rp ${formatRp(saldoAwal)}
-*+ Total Pemasukan:* Rp ${formatRp(totalMasuk)}
 *- Total Pengeluaran:* Rp ${formatRp(totalKeluar)}
 *= Saldo Akhir:* Rp ${formatRp(saldoAkhir)}\n`;
 
