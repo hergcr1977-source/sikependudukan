@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-const FONNTE_API_KEY = process.env.FONNTE_API_KEY || 'Qpd7Wq4tJLHQF6qNVo5S';
+const FONNTE_API_KEY = process.env.FONNTE_API_KEY || '6HQgtJr48wrWjqDT47Gc';
 const FONNTE_SEND_URL = 'https://api.fonnte.com/send';
 
 // In-memory webhook log (for debugging)
@@ -783,7 +783,7 @@ export async function GET() {
   return NextResponse.json({
     service: 'Sikependudukan WA Bot',
     status: 'active',
-    api_key_valid: FONNTE_API_KEY.startsWith('Qpd7'),
+    api_key_valid: FONNTE_API_KEY.startsWith('6HQ'),
     webhook_url: 'https://sikependudukan.vercel.app/api/wa/webhook',
     commands: ['#HELP', '#NIK', '#KK', '#BANTUAN', '#BANTUAN <nik>', '#KAS'],
     recent_webhooks: webhookLogs.slice(0, 10),
