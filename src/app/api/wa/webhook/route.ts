@@ -31,17 +31,19 @@ const MAX_LOGS = 50;
 // Helper: kirim pesan WA via Fonnte
 async function sendWaMessage(target: string, message: string): Promise<{ ok: boolean; detail: string }> {
   try {
+    const isGroup = target.includes('@g.us');
+    const payload: any = { target, message };
+    // country_code hanya untuk nomor pribadi, bukan grup
+    if (!isGroup) {
+      payload.country_code = '62';
+    }
     const res = await fetch(FONNTE_SEND_URL, {
       method: 'POST',
       headers: {
         'Authorization': FONNTE_API_KEY,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        target,
-        message,
-        country_code: '62',
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     console.log('Fonnte send response:', JSON.stringify(data));
@@ -705,11 +707,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored', reason: 'event_notification' });
     }
 
-    // 6. Skip group messages (Fonnte API target format tidak support group ID)
-    if (body.isgroup === true || body.isgroup === 'true') {
-      console.log('Skipping group message (isgroup=true)');
-      return NextResponse.json({ status: 'ignored', reason: 'group_message' });
-    }
+    // 6. Group messages: hanya proses jika diawali #
+    //    (tidak di-skip di sini, akan di-filter di processCommand)
 
     // Extract phone, message, name from Fonnte format
     const extracted = extractFromFonnte(body);
@@ -731,7 +730,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored', reason: 'could not extract phone or message', received_keys: Object.keys(body) });
     }
 
-    phone = cleanPhone(extracted.phone);
+    const isGroup = body.isgroup === true || body.isgroup === 'true';
+    // Untuk grup: gunakan group ID mentah (dengan @g.us)
+    // Untuk pribadi: bersihkan nomor HP
+    phone = isGroup ? extracted.phone : cleanPhone(extracted.phone);
     message = extracted.message;
     senderName = extracted.name || '';
 
