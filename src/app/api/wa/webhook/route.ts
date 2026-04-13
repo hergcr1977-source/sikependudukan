@@ -699,6 +699,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored', reason: 'event_notification' });
     }
 
+    // 6. Skip group messages (Fonnte API target format tidak support group ID)
+    if (body.isgroup === true || body.isgroup === 'true') {
+      console.log('Skipping group message (isgroup=true)');
+      return NextResponse.json({ status: 'ignored', reason: 'group_message' });
+    }
+
     // Extract phone, message, name from Fonnte format
     const extracted = extractFromFonnte(body);
 
