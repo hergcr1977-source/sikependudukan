@@ -488,22 +488,27 @@ async function handleKasRT(phone: string) {
   let lastKeluar: any = null;
 
   allData.forEach((d: any) => {
+    const jml = Number(d.jumlah) || 0;
     if (d.jenis === 'PEMASUKAN') {
-      totalMasuk += d.jumlah;
+      totalMasuk += jml;
       if (!lastMasuk || new Date(d.tanggal) >= new Date(lastMasuk.tanggal)) {
-        lastMasuk = d;
+        lastMasuk = { ...d, jumlah: jml };
       }
     } else {
-      totalKeluar += d.jumlah;
+      totalKeluar += jml;
       if (!lastKeluar || new Date(d.tanggal) >= new Date(lastKeluar.tanggal)) {
-        lastKeluar = d;
+        lastKeluar = { ...d, jumlah: jml };
       }
     }
   });
 
   const saldoAkhir = totalMasuk - totalKeluar;
-  // Saldo awal = saldo akhir dikurangi total pemasukan (saldo sebelum ada pemasukan)
-  const saldoAwal = saldoAkhir - totalMasuk;
+
+  // Saldo awal = saldo akhir dikurangi pemasukan terakhir
+  // (saldo sebelum pemasukan terakhir diinput)
+  const saldoAwal = lastMasuk ? saldoAkhir - lastMasuk.jumlah : 0;
+
+  console.log(`[KAS] totalMasuk=${totalMasuk}, totalKeluar=${totalKeluar}, saldoAkhir=${saldoAkhir}, lastMasuk=${lastMasuk ? JSON.stringify(lastMasuk) : 'null'}, saldoAwal=${saldoAwal}`);
 
   let msg = `*KAS RT - RINGKASAN*
 ━━━━━━━━━━━━━━━━━
