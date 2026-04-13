@@ -535,24 +535,30 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
 // ============ MAIN COMMAND PROCESSOR ============
 
 async function processCommand(phone: string, message: string) {
-  const text = message.trim().toUpperCase();
+  const text = message.trim();
 
-  console.log(`Processing WA command from ${phone}: "${text}"`);
+  // Hanya proses pesan yang diawali #
+  if (!text.startsWith('#')) {
+    return { ok: false, detail: 'ignored - not a command (no # prefix)' };
+  }
 
-  if (text === '#HELP' || text === '#MENU' || text === 'MENU') {
+  const upper = text.toUpperCase();
+  console.log(`Processing WA command from ${phone}: "${upper}"`);
+
+  if (upper === '#HELP' || upper === '#MENU' || upper === 'MENU') {
     return await handleHelp(phone);
-  } else if (text.startsWith('#NIK ')) {
-    const nik = text.replace('#NIK ', '').trim();
+  } else if (upper.startsWith('#NIK ')) {
+    const nik = upper.replace('#NIK ', '').trim();
     return await handleCekNik(phone, nik);
-  } else if (text.startsWith('#KK ')) {
-    const noKK = message.trim().substring(4).trim();
+  } else if (upper.startsWith('#KK ')) {
+    const noKK = text.substring(4).trim();
     return await handleCekKK(phone, noKK);
-  } else if (text.startsWith('#BANTUAN ')) {
-    const nik = text.replace('#BANTUAN ', '').trim();
+  } else if (upper.startsWith('#BANTUAN ')) {
+    const nik = upper.replace('#BANTUAN ', '').trim();
     return await handleBantuanNik(phone, nik);
-  } else if (text === '#BANTUAN') {
+  } else if (upper === '#BANTUAN') {
     return await handleBantuan(phone);
-  } else if (text === '#KAS') {
+  } else if (upper === '#KAS') {
     return await handleKasRT(phone);
   } else {
     return await sendWaMessage(phone,
