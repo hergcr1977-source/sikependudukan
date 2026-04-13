@@ -473,62 +473,63 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
 }
 
 async function handleKasRT(phone: string) {
-  const now = new Date();
-  const bulan = now.getMonth() + 1;
-  const tahun = now.getFullYear();
-
-  const namaBulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-
-  const data = await db.$queryRawUnsafe(
-    `SELECT * FROM "KasRT" WHERE "tanggal" >= $1 AND "tanggal" <= $2 ORDER BY "tanggal" ASC`,
-    new Date(tahun, bulan - 1, 1),
-    new Date(tahun, bulan, 0, 23, 59, 59)
+  // Ambil SEMUA data kas (tanpa filter bulan)
+  const allData = await db.$queryRawUnsafe(
+    `SELECT * FROM "KasRT" ORDER BY "tanggal" ASC`
   ) as any[];
 
-  if (!data || data.length === 0) {
-    return await sendWaMessage(phone, `Tidak ada data kas RT untuk bulan ${namaBulan[bulan - 1]} ${tahun}.`);
+  if (!allData || allData.length === 0) {
+    return await sendWaMessage(phone, `Belum ada data kas RT.`);
   }
 
   let totalMasuk = 0;
   let totalKeluar = 0;
+  let lastMasuk: any = null;
+  let lastKeluar: any = null;
 
-  // Group by jenis
-  const pemasukan: string[] = [];
-  const pengeluaran: string[] = [];
-
-  data.forEach((d: any) => {
-    const tgl = formatTanggal(new Date(d.tanggal));
-    const rp = formatRp(d.jumlah);
+  allData.forEach((d: any) => {
     if (d.jenis === 'PEMASUKAN') {
       totalMasuk += d.jumlah;
-      pemasukan.push(`  +Rp ${rp}\n    ${tgl} | ${d.keterangan || '-'}`);
+      if (!lastMasuk || new Date(d.tanggal) >= new Date(lastMasuk.tanggal)) {
+        lastMasuk = d;
+      }
     } else {
       totalKeluar += d.jumlah;
-      pengeluaran.push(`  -Rp ${rp}\n    ${tgl} | ${d.keterangan || '-'}`);
+      if (!lastKeluar || new Date(d.tanggal) >= new Date(lastKeluar.tanggal)) {
+        lastKeluar = d;
+      }
     }
   });
 
   const saldo = totalMasuk - totalKeluar;
 
-  let msg = `*KAS RT - ${namaBulan[bulan - 1]} ${tahun}*
-━━━━━━━━━━━━━━━━━\n`;
+  let msg = `*KAS RT - RINGKASAN*
+━━━━━━━━━━━━━━━━━
+*Total Pemasukan:* Rp ${formatRp(totalMasuk)}
+*Total Pengeluaran:* Rp ${formatRp(totalKeluar)}
+*Saldo:* Rp ${formatRp(saldo)}\n`;
 
-  if (pemasukan.length > 0) {
-    msg += `*PEMASUKAN (${pemasukan.length} transaksi):*\n`;
-    msg += pemasukan.join('\n') + '\n\n';
+  if (lastMasuk) {
+    msg += `\n*PEMASUKAN TERAKHIR:*
+  Rp ${formatRp(lastMasuk.jumlah)}
+  ${formatTanggal(new Date(lastMasuk.tanggal))}
+  ${lastMasuk.keterangan || '-'}\n`;
+  } else {
+    msg += `\n*PEMASUKAN TERAKHIR:*
+  _Belum ada_\n`;
   }
 
-  if (pengeluaran.length > 0) {
-    msg += `*PENGELUARAN (${pengeluaran.length} transaksi):*\n`;
-    msg += pengeluaran.join('\n') + '\n\n';
+  if (lastKeluar) {
+    msg += `\n*PENGELUARAN TERAKHIR:*
+  Rp ${formatRp(lastKeluar.jumlah)}
+  ${formatTanggal(new Date(lastKeluar.tanggal))}
+  ${lastKeluar.keterangan || '-'}\n`;
+  } else {
+    msg += `\n*PENGELUARAN TERAKHIR:*
+  _Belum ada_\n`;
   }
 
   msg += `━━━━━━━━━━━━━━━━━
-*Total Pemasukan:* Rp ${formatRp(totalMasuk)}
-*Total Pengeluaran:* Rp ${formatRp(totalKeluar)}
-*Saldo Bulan Ini:* Rp ${formatRp(saldo)}
-━━━━━━━━━━━━━━━━━
 _Data dari Sistem Kependudukan RT.001 RW.002_`;
 
   return await sendWaMessage(phone, msg);
