@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X } from 'lucide-react';
+import { Plus, Search, FileUp, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -139,6 +139,18 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [addMode, setAddMode] = useState<'KK_BARU' | 'ANGGOTA'>('KK_BARU');
+
+  // Filter
+  const [activeFilter, setActiveFilter] = useState<string>('');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const FILTER_OPTIONS = [
+    { value: 'KK_PEREMPUAN', label: 'KK Perempuan', description: 'Kepala keluarga perempuan' },
+    { value: 'KK_LAKI', label: 'KK Laki-laki', description: 'Kepala keluarga laki-laki' },
+    { value: 'WAJIB_KTP_17', label: 'Wajib KTP 17 Thn', description: 'Usia baru masuk/tepat 17 tahun' },
+    { value: 'USIA_75', label: 'Usia 75+ Thn', description: 'Usia 75 tahun ke atas' },
+    { value: 'LANSIA_60', label: 'Lansia 60+ Thn', description: 'Usia 60 tahun ke atas' },
+    { value: 'BPJS_TIDAK_ADA', label: 'BPJS Tidak Ada', description: 'Tidak memiliki BPJS' },
+  ];
 
   // Anggota list for KK_BARU mode
   const [anggotaList, setAnggotaList] = useState<typeof defaultFormData[]>([]);
@@ -575,6 +587,52 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     }));
   };
 
+  // Filter logic: filter penduduk data based on activeFilter
+  const filteredGroups = (() => {
+    if (!activeFilter) return kkGroups;
+
+    switch (activeFilter) {
+      case 'KK_PEREMPUAN':
+        return kkGroups.filter(g => g.kepala?.jenisKelamin === 'PEREMPUAN');
+      case 'KK_LAKI':
+        return kkGroups.filter(g => g.kepala?.jenisKelamin === 'LAKI-LAKI');
+      case 'WAJIB_KTP_17':
+      case 'USIA_75':
+      case 'LANSIA_60':
+      case 'BPJS_TIDAK_ADA': {
+        // These filters work on individual penduduk, not KK groups
+        // Return KK groups that have at least one matching member
+        const minAge = activeFilter === 'WAJIB_KTP_17' ? 17 : activeFilter === 'USIA_75' ? 75 : 60;
+        const maxAge = activeFilter === 'WAJIB_KTP_17' ? 17 : 999;
+
+        return kkGroups
+          .map(group => {
+            const allMembers = group.kepala ? [group.kepala, ...group.anggota] : group.anggota;
+            const filteredMembers = allMembers.filter(p => {
+              if (activeFilter === 'BPJS_TIDAK_ADA') {
+                return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
+              }
+              const umur = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : 0;
+              return umur >= minAge && umur <= maxAge;
+            });
+            if (filteredMembers.length === 0) return null;
+            // Reconstruct group with only matching members
+            const kepala = filteredMembers.find(p => p.statusKeluarga === 'KEPALA KELUARGA');
+            const anggota = filteredMembers.filter(p => p.statusKeluarga !== 'KEPALA KELUARGA');
+            return { noKK: group.noKK, kepala: kepala || filteredMembers[0], anggota };
+          })
+          .filter((g): g is KKGroup => g !== null);
+      }
+      default:
+        return kkGroups;
+    }
+  })();
+
+  const filteredCount = filteredGroups.reduce((sum, g) => {
+    const members = g.kepala ? [g.kepala, ...g.anggota] : g.anggota;
+    return sum + members.length;
+  }, 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -590,7 +648,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-emerald-600" />
           <h2 className="text-lg font-bold text-emerald-800">Data Penduduk</h2>
-          <Badge variant="secondary" className="text-xs">{penduduk.length} orang</Badge>
+          <Badge variant="secondary" className="text-xs">{activeFilter ? `${filteredCount}` : `${penduduk.length}`} orang</Badge>
         </div>
         <div className="flex gap-2">
           {isAdmin && (
@@ -635,21 +693,72 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Cari nama, NIK, No. KK..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search & Filter */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Cari nama, NIK, No. KK..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="relative">
+          <Button
+            variant={activeFilter ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowFilterMenu(!showFilterMenu)}
+            className={activeFilter ? 'bg-orange-500 hover:bg-orange-600 min-w-[100px] justify-between' : 'min-w-[100px] justify-between'}
+          >
+            <span className="flex items-center gap-1">
+              <SlidersHorizontal className="h-4 w-4" />
+              Filter
+            </span>
+            {activeFilter && (
+              <X className="h-3.5 w-3.5 ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveFilter(''); }} />
+            )}
+            {!activeFilter && <ChevronDown className="h-3.5 w-3.5 ml-1" />}
+          </Button>
+          {showFilterMenu && (
+            <div className="absolute right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-56">
+              <button
+                type="button"
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${!activeFilter ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}
+                onClick={() => { setActiveFilter(''); setShowFilterMenu(false); }}
+              >
+                Semua Data
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+              {FILTER_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 transition-colors ${activeFilter === opt.value ? 'bg-orange-50 text-orange-700 font-medium' : ''}`}
+                  onClick={() => { setActiveFilter(opt.value); setShowFilterMenu(false); }}
+                >
+                  <div className="font-medium">{opt.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{opt.description}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+      {activeFilter && (
+        <div className="flex items-center gap-2">
+          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border border-orange-200 text-xs px-2 py-1">
+            {FILTER_OPTIONS.find(f => f.value === activeFilter)?.label || activeFilter}
+            <X className="h-3 w-3 ml-1.5 cursor-pointer" onClick={() => setActiveFilter('')} />
+          </Badge>
+          <span className="text-xs text-muted-foreground">Menampilkan {filteredCount} dari {penduduk.length} penduduk</span>
+        </div>
+      )}
 
       {/* KK List */}
       <ScrollArea className="max-h-[calc(100vh-260px)]">
         <div className="space-y-2">
-          {kkGroups.map(group => {
+          {filteredGroups.map(group => {
             const isExpanded = expandedKK.has(group.noKK);
             const totalL = (group.kepala?.jenisKelamin === 'LAKI-LAKI' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'LAKI-LAKI').length;
             const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
