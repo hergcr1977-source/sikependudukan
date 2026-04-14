@@ -588,6 +588,9 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   };
 
   // Filter logic: filter penduduk data based on activeFilter
+  // isFlatFilter: true = filter menghasilkan daftar individu (bukan KK groups)
+  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA'].includes(activeFilter);
+
   const filteredGroups = (() => {
     if (!activeFilter) return kkGroups;
 
@@ -596,46 +599,41 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         return kkGroups.filter(g => g.kepala?.jenisKelamin === 'PEREMPUAN');
       case 'KK_LAKI':
         return kkGroups.filter(g => g.kepala?.jenisKelamin === 'LAKI-LAKI');
-      case 'WAJIB_KTP_17':
-      case 'USIA_75':
-      case 'LANSIA_60':
-      case 'BPJS_TIDAK_ADA': {
-        // These filters work on individual penduduk, not KK groups
-        // Return KK groups that have at least one matching member
-        const minAge = activeFilter === 'WAJIB_KTP_17' ? 17 : activeFilter === 'USIA_75' ? 75 : 60;
-        const maxAge = activeFilter === 'WAJIB_KTP_17' ? 17 : 999;
-
-        return kkGroups
-          .map(group => {
-            const allMembers = group.kepala ? [group.kepala, ...group.anggota] : group.anggota;
-            const filteredMembers = allMembers.filter(p => {
-              if (activeFilter === 'BPJS_TIDAK_ADA') {
-                return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
-              }
-              if (activeFilter === 'WAJIB_KTP_17') {
-                return p.tanggalLahir ? isWajibKTP(p.tanggalLahir) : false;
-              }
-              const umurResult = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;
-              const umurTahun = umurResult ? umurResult.umurTahun : 0;
-              return umurTahun >= minAge && umurTahun <= maxAge;
-            });
-            if (filteredMembers.length === 0) return null;
-            // Reconstruct group with only matching members
-            const kepala = filteredMembers.find(p => p.statusKeluarga === 'KEPALA KELUARGA');
-            const anggota = filteredMembers.filter(p => p.statusKeluarga !== 'KEPALA KELUARGA');
-            return { noKK: group.noKK, kepala: kepala || filteredMembers[0], anggota };
-          })
-          .filter((g): g is KKGroup => g !== null);
-      }
       default:
         return kkGroups;
     }
   })();
 
-  const filteredCount = filteredGroups.reduce((sum, g) => {
-    const members = g.kepala ? [g.kepala, ...g.anggota] : g.anggota;
-    return sum + members.length;
-  }, 0);
+  // Flat list untuk filter individu (usia, BPJS) — tanpa duplikasi KK card
+  const flatFilteredList = (() => {
+    if (!isFlatFilter) return [];
+
+    return penduduk.filter(p => {
+      switch (activeFilter) {
+        case 'WAJIB_KTP_17':
+          return p.tanggalLahir ? isWajibKTP(p.tanggalLahir) : false;
+        case 'USIA_75': {
+          const u = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;
+          return u ? u.umurTahun >= 75 : false;
+        }
+        case 'LANSIA_60': {
+          const u = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;
+          return u ? u.umurTahun >= 60 : false;
+        }
+        case 'BPJS_TIDAK_ADA':
+          return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
+        default:
+          return false;
+      }
+    }).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id', { sensitivity: 'base' }));
+  })();
+
+  const filteredCount = isFlatFilter
+    ? flatFilteredList.length
+    : filteredGroups.reduce((sum, g) => {
+        const members = g.kepala ? [g.kepala, ...g.anggota] : g.anggota;
+        return sum + members.length;
+      }, 0);
 
   if (loading) {
     return (
@@ -762,64 +760,91 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       {/* KK List */}
       <ScrollArea className="max-h-[calc(100vh-260px)]">
         <div className="space-y-2">
-          {filteredGroups.map(group => {
-            const isExpanded = expandedKK.has(group.noKK);
-            const totalL = (group.kepala?.jenisKelamin === 'LAKI-LAKI' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'LAKI-LAKI').length;
-            const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
+          {isFlatFilter ? (
+            // Tampilan flat list untuk filter individu (usia, BPJS)
+            <>
+              {flatFilteredList.length > 0 ? (
+                flatFilteredList.map(p => (
+                  <Card key={p.id} className="overflow-hidden">
+                    <CardContent className="p-0">
+                      <PendudukRow
+                        penduduk={p}
+                        isKK={p.statusKeluarga === 'KEPALA KELUARGA'}
+                        isAdmin={isAdmin}
+                        onEdit={openEditForm}
+                        onDelete={setDeleteTarget}
+                        onAddMember={p.statusKeluarga === 'KEPALA KELUARGA' ? () => openAddForm(p.noKK, true) : undefined}
+                      />
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Tidak ada data yang sesuai filter</p>
+                </div>
+              )}
+            </>
+          ) : (
+            // Tampilan KK groups (normal atau filter KK)
+            filteredGroups.map(group => {
+              const isExpanded = expandedKK.has(group.noKK);
+              const totalL = (group.kepala?.jenisKelamin === 'LAKI-LAKI' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'LAKI-LAKI').length;
+              const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
 
-            return (
-              <Card key={group.noKK} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {/* KK Header */}
-                  <button
-                    onClick={() => toggleExpand(group.noKK)}
-                    className="w-full flex items-center gap-2 p-3 hover:bg-emerald-50 transition-colors text-left"
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-emerald-600 shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">{group.kepala?.namaLengkap || '-'}</p>
-                      <p className="text-[11px] text-muted-foreground">KK: {group.noKK}</p>
-                    </div>
-                    <div className="flex gap-1 items-center shrink-0">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">L:{totalL}</Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">P:{totalP}</Badge>
-                    </div>
-                  </button>
-
-                  {/* Expanded Members */}
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 bg-gray-50/50">
-                      {group.kepala && (
-                        <PendudukRow
-                          penduduk={group.kepala}
-                          isKK
-                          isAdmin={isAdmin}
-                          onEdit={openEditForm}
-                          onDelete={setDeleteTarget}
-                          onAddMember={() => openAddForm(group.noKK, true)}
-                        />
+              return (
+                <Card key={group.noKK} className="overflow-hidden">
+                  <CardContent className="p-0">
+                    {/* KK Header */}
+                    <button
+                      onClick={() => toggleExpand(group.noKK)}
+                      className="w-full flex items-center gap-2 p-3 hover:bg-emerald-50 transition-colors text-left"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-emerald-600 shrink-0" />
                       )}
-                      {group.anggota.map(a => (
-                        <PendudukRow
-                          key={a.id}
-                          penduduk={a}
-                          isKK={false}
-                          isAdmin={isAdmin}
-                          onEdit={openEditForm}
-                          onDelete={setDeleteTarget}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-          {kkGroups.length === 0 && (
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate">{group.kepala?.namaLengkap || '-'}</p>
+                        <p className="text-[11px] text-muted-foreground">KK: {group.noKK}</p>
+                      </div>
+                      <div className="flex gap-1 items-center shrink-0">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">L:{totalL}</Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">P:{totalP}</Badge>
+                      </div>
+                    </button>
+
+                    {/* Expanded Members */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 bg-gray-50/50">
+                        {group.kepala && (
+                          <PendudukRow
+                            penduduk={group.kepala}
+                            isKK
+                            isAdmin={isAdmin}
+                            onEdit={openEditForm}
+                            onDelete={setDeleteTarget}
+                            onAddMember={() => openAddForm(group.noKK, true)}
+                          />
+                        )}
+                        {group.anggota.map(a => (
+                          <PendudukRow
+                            key={a.id}
+                            penduduk={a}
+                            isKK={false}
+                            isAdmin={isAdmin}
+                            onEdit={openEditForm}
+                            onDelete={setDeleteTarget}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+          {kkGroups.length === 0 && !isFlatFilter && (
             <div className="text-center py-8 text-muted-foreground">
               <p>Tidak ada data penduduk</p>
               {isAdmin && <p className="text-xs mt-1">Klik &quot;Tambah&quot; untuk menambahkan data baru</p>}
