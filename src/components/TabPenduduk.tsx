@@ -40,7 +40,7 @@ import {
   KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
   STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
-import { hitungUmur, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
+import { hitungUmur, isWajibKTP, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
 
 interface Penduduk {
@@ -612,8 +612,12 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
               if (activeFilter === 'BPJS_TIDAK_ADA') {
                 return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
               }
-              const umur = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : 0;
-              return umur >= minAge && umur <= maxAge;
+              if (activeFilter === 'WAJIB_KTP_17') {
+                return p.tanggalLahir ? isWajibKTP(p.tanggalLahir) : false;
+              }
+              const umurResult = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;
+              const umurTahun = umurResult ? umurResult.umurTahun : 0;
+              return umurTahun >= minAge && umurTahun <= maxAge;
             });
             if (filteredMembers.length === 0) return null;
             // Reconstruct group with only matching members
