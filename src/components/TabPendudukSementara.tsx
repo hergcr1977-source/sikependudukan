@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Pencil, Trash2, UserRound, FileUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, UserRound, FileUp, FileDown, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_KETERANGAN_SEMENTARA,
@@ -139,6 +139,8 @@ export default function TabPendudukSementara({ isAdmin = true, isActive = false 
   // Import
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Export
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -322,6 +324,31 @@ export default function TabPendudukSementara({ isAdmin = true, isActive = false 
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await apiFetch('/api/penduduk-sementara/export');
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `data-penduduk-sementara-${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast.success('Data berhasil diekspor');
+      } else {
+        toast.error('Gagal mengekspor data');
+      }
+    } catch {
+      toast.error('Gagal mengekspor data');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);
     if (next.has(noKK)) next.delete(noKK);
@@ -369,6 +396,15 @@ export default function TabPendudukSementara({ isAdmin = true, isActive = false 
           <Badge variant="secondary" className="text-xs">{activeData.length} orang</Badge>
         </div>
         <div className="flex gap-2">
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-1" />
+              ) : (
+                <FileDown className="h-4 w-4 mr-1" />
+              )} Ekspor
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <FileUp className="h-4 w-4 mr-1" /> Impor

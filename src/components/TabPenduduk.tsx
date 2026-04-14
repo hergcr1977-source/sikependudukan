@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -134,6 +134,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   // Import
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Export
+  const [exporting, setExporting] = useState(false);
 
   // Add menu
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -537,6 +539,31 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await apiFetch('/api/penduduk/export');
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `data-penduduk-${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast.success('Data berhasil diekspor');
+      } else {
+        toast.error('Gagal mengekspor data');
+      }
+    } catch {
+      toast.error('Gagal mengekspor data');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);
     if (next.has(noKK)) next.delete(noKK);
@@ -653,6 +680,15 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           <Badge variant="secondary" className="text-xs">{activeFilter ? `${filteredCount}` : `${penduduk.length}`} orang</Badge>
         </div>
         <div className="flex gap-2">
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-1" />
+              ) : (
+                <FileDown className="h-4 w-4 mr-1" />
+              )} Ekspor
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <FileUp className="h-4 w-4 mr-1" /> Impor
