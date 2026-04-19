@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -564,6 +564,101 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     }
   };
 
+  const handlePrintLabel = () => {
+    // Kumpulkan data label: nama KK & istri, Di, Tepat
+    const labels: { text: string }[] = [];
+    kkGroups.forEach(g => {
+      const kkName = g.kepala?.namaLengkap || '';
+      const istri = g.anggota.find(a => a.statusKeluarga === 'ISTRI');
+      const istriName = istri?.namaLengkap || '';
+      let text = kkName;
+      if (istriName) {
+        text = `${kkName} & ${istriName}`;
+      }
+      if (text) labels.push({ text });
+    });
+
+    if (labels.length === 0) {
+      toast.error('Tidak ada data untuk dicetak');
+      return;
+    }
+
+    // Buat halaman label per 12 label (3 kolom x 4 baris)
+    const LABELS_PER_PAGE = 12;
+    const pages: { text: string }[][] = [];
+    for (let i = 0; i < labels.length; i += LABELS_PER_PAGE) {
+      pages.push(labels.slice(i, i + LABELS_PER_PAGE));
+    }
+
+    // Generate HTML untuk setiap halaman
+    const pagesHtml = pages.map((pageLabels, pageIdx) => {
+      const rows: string[] = [];
+      for (let row = 0; row < 4; row++) {
+        const cells: string[] = [];
+        for (let col = 0; col < 3; col++) {
+          const idx = row * 3 + col;
+          const label = pageLabels[idx];
+          cells.push(`
+            <div style="
+              width: 88mm; height: 48mm;
+              display: flex; flex-direction: column;
+              align-items: center; justify-content: center;
+              font-family: 'Times New Roman', Times, serif;
+              font-weight: bold; text-align: center;
+              border: 0.5px solid #ccc;
+              box-sizing: border-box;
+            ">
+              <p style="font-size: 12pt; margin: 1px 0;">${label ? label.text : ''}</p>
+              <p style="font-size: 11pt; margin: 1px 0;">Di</p>
+              <p style="font-size: 11pt; margin: 1px 0;">Tepat</p>
+            </div>
+          `);
+        }
+        rows.push(`<div style="display: flex; gap: 0;">${cells.join('')}</div>`);
+      }
+      return `<div class="page">${rows.join('')}</div>`;
+    }).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Pop-up diblokir. Izinkan pop-up untuk mencetak label.');
+      return;
+    }
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Label Undangan</title>
+  <style>
+    @page { size: A4 landscape; margin: 5mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Times New Roman', Times, serif; }
+    .page {
+      width: 287mm; height: 200mm;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    @media print {
+      .no-print { display: none !important; }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="padding: 10px; text-align: center; font-family: sans-serif;">
+    <button onclick="window.print()" style="padding: 8px 24px; font-size: 14px; cursor: pointer; margin-right: 10px; background: #059669; color: white; border: none; border-radius: 6px;">Cetak Label</button>
+    <button onclick="window.close()" style="padding: 8px 24px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 6px;">Tutup</button>
+    <p style="font-size: 12px; color: #666; margin-top: 8px;">Atur ukuran kertas ke A4 Landscape, margin Minimal, lalu klik Cetak Label</p>
+  </div>
+  ${pagesHtml}
+</body>
+</html>`);
+    printWindow.document.close();
+  };
+
   const toggleExpand = (noKK: string) => {
     const next = new Set(expandedKK);
     if (next.has(noKK)) next.delete(noKK);
@@ -694,6 +789,9 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
               <FileUp className="h-4 w-4 mr-1" /> Impor
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={handlePrintLabel}>
+            <Printer className="h-4 w-4 mr-1" /> Cetak Label
+          </Button>
           {isAdmin && (
             <div ref={addMenuRef} className="relative">
               <Button
