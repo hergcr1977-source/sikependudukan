@@ -331,9 +331,9 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
                       <td className="p-2">{item.statusKeluarga}</td>
                       <td className="p-2">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          item.punyaKTP === 'SUDAH' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                          item.punyaKTP === 'PUNYA' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
                         }`}>
-                          {item.punyaKTP === 'SUDAH' ? 'Sudah' : 'Belum'}
+                          {item.punyaKTP === 'PUNYA' ? 'Sudah' : 'Belum'}
                         </span>
                       </td>
                     </tr>
