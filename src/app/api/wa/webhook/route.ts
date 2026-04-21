@@ -7,6 +7,7 @@
  * #BANTUAN <nik>    - Desil, bantuan, BPJS per NIK
  * #NIK <nik>       - Data penduduk berdasarkan NIK
  * #KK <no_kk>      - Semua penduduk sesuai No. KK
+ * #BANDES <no_kk>  - Cek penerima bantuan sembako desa berdasarkan No. KK
  * #KAS             - Info kas RT bulan ini (pemasukan & pengeluaran)
  */
 
@@ -104,7 +105,11 @@ RT.001 RW.002
    Cek bantuan, BPJS, dan desil per NIK
    Contoh: #BANTUAN 3201010101010001
 
-6. *#KAS*
+6. *#BANDES <no_kk>*
+   Cek penerima bantuan sembako desa
+   Contoh: #BANDES 3201010101010001
+
+7. *#KAS*
    Info kas RT bulan ini
 
 _Data mencakup Penduduk Tetap & Sementara_
@@ -542,6 +547,51 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
   return await sendWaMessage(phone, msg);
 }
 
+async function handleBandes(phone: string, noKK: string) {
+  // Clean noKK
+  const kk = noKK.replace(/[^0-9]/g, '');
+  if (kk.length < 15) {
+    return await sendWaMessage(phone, `No. KK minimal 15 digit angka.\n\nContoh: #BANDES 3201010101010001`);
+  }
+
+  // Query tabel PenerimaSembako
+  const penerima = await db.$queryRawUnsafe(
+    `SELECT * FROM "PenerimaSembako" WHERE "noKK" = $1 ORDER BY "namaLengkap" ASC`, kk
+  ) as any[];
+
+  if (!penerima || penerima.length === 0) {
+    const msg = `*PENERIMA BANTUAN SEMBAKO DESA*
+━━━━━━━━━━━━━━━━━
+No. KK: *${kk}*
+
+Anda *tidak terdaftar* dalam penerima bantuan sembako desa.
+
+_ ketik #BANDES <no.kk> untuk cek penerima_`;
+    return await sendWaMessage(phone, msg);
+  }
+
+  let msg = `*PENERIMA BANTUAN SEMBAKO DESA*
+━━━━━━━━━━━━━━━━━
+No. KK: *${kk}*
+Jumlah Penerima: *${penerima.length} orang*\n\n`;
+
+  penerima.forEach((p: any, i: number) => {
+    const jk = p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P';
+    msg += `${i + 1}. *${p.namaLengkap}*
+   NIK: ${p.nik}
+   No. KK: ${p.noKK}
+   JK: ${jk} | Status: ${p.statusKeluarga || '-'}
+   Alamat: ${p.alamat || '-'}, RT ${p.rt || '-'}/RW ${p.rw || '-'}\n`;
+    if (i < penerima.length - 1) msg += '\n';
+  });
+
+  msg += `\n━━━━━━━━━━━━━━━━━
+Anda *terdaftar* sebagai penerima bantuan sembako desa.
+_ ketik #BANDES <no.kk> untuk cek penerima_`;
+
+  return await sendWaMessage(phone, msg);
+}
+
 // ============ MAIN COMMAND PROCESSOR ============
 
 async function processCommand(phone: string, message: string) {
@@ -568,6 +618,9 @@ async function processCommand(phone: string, message: string) {
     return await handleBantuanNik(phone, nik);
   } else if (upper === '#BANTUAN') {
     return await handleBantuan(phone);
+  } else if (upper.startsWith('#BANDES ')) {
+    const noKK = text.substring(8).trim();
+    return await handleBandes(phone, noKK);
   } else if (upper === '#KAS') {
     return await handleKasRT(phone);
   } else {
@@ -807,7 +860,7 @@ export async function GET() {
     status: 'active',
     api_key_valid: FONNTE_API_KEY.startsWith('6HQ'),
     webhook_url: 'https://sikependudukan.vercel.app/api/wa/webhook',
-    commands: ['#HELP', '#NIK', '#KK', '#BANTUAN', '#BANTUAN <nik>', '#KAS'],
+    commands: ['#HELP', '#NIK', '#KK', '#BANTUAN', '#BANTUAN <nik>', '#BANDES <no_kk>', '#KAS'],
     recent_webhooks: webhookLogs.slice(0, 10),
     total_webhooks_received: webhookLogs.length,
   });
