@@ -12,6 +12,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -30,6 +41,11 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCheck,
+  Package,
+  Plus,
+  Trash2,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BANTUAN_OPTIONS, BPJS_OPTIONS, DESIL_OPTIONS } from '@/lib/constants';
@@ -59,6 +75,9 @@ interface Penduduk {
   bpjs: string | null;
   desil: string | null;
   keterangan: string | null;
+  alamat?: string;
+  rt?: string;
+  rw?: string;
   // Internal marker
   _isSementara?: boolean;
 }
@@ -69,12 +88,30 @@ interface KKGroup {
   anggota: Penduduk[];
 }
 
+interface PenerimaSembako {
+  id: number;
+  noKK: string;
+  nik: string;
+  namaLengkap: string;
+  jenisKelamin: string;
+  statusKeluarga: string;
+  tanggalLahir: string;
+  alamat: string;
+  rt: string;
+  rw: string;
+  keterangan: string | null;
+}
+
 interface TabBantuanProps {
   isAdmin?: boolean;
   isActive?: boolean;
 }
 
 export default function TabBantuan({ isAdmin = true, isActive = false }: TabBantuanProps) {
+  // ==================== VIEW TOGGLE ====================
+  const [activeView, setActiveView] = useState<'bansos' | 'sembako'>('bansos');
+
+  // ==================== BANSOS STATE ====================
   const [penduduk, setPenduduk] = useState<Penduduk[]>([]);
   const [kkGroups, setKKGroups] = useState<KKGroup[]>([]);
   const [search, setSearch] = useState('');
@@ -91,6 +128,16 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
   const [dbReady, setDbReady] = useState(false);
 
+  // ==================== SEMBAKO STATE ====================
+  const [sembakoData, setSembakoData] = useState<PenerimaSembako[]>([]);
+  const [sembakoLoading, setSembakoLoading] = useState(false);
+  const [sembakoSearch, setSembakoSearch] = useState('');
+  const [sembakoSearchResults, setSembakoSearchResults] = useState<Penduduk[]>([]);
+  const [sembakoSearching, setSembakoSearching] = useState(false);
+  const [sembakoAdding, setSembakoAdding] = useState<string | null>(null); // NIK being added
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  // ==================== BANSOS FUNCTIONS ====================
   const fetchPenduduk = useCallback(async () => {
     try {
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -355,6 +402,153 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
     return <Badge className="text-[9px] px-1.5 py-0 bg-purple-100 text-purple-700 hover:bg-purple-100">{desil}</Badge>;
   };
 
+  // ==================== SEMBAKO FUNCTIONS ====================
+  const fetchSembako = useCallback(async () => {
+    setSembakoLoading(true);
+    try {
+      const res = await apiFetch('/api/sembako');
+      if (res.ok) {
+        const data: PenerimaSembako[] = await res.json();
+        setSembakoData(data);
+      }
+    } catch (error) {
+      console.error('[Sembako] Fetch error:', error);
+    } finally {
+      setSembakoLoading(false);
+    }
+  }, []);
+
+  // Fetch sembako when switching to sembako view
+  useEffect(() => {
+    if (activeView === 'sembako') fetchSembako();
+  }, [activeView, fetchSembako]);
+
+  // Search penduduk for sembako addition
+  const handleSembakoSearch = useCallback(async (value: string) => {
+    setSembakoSearch(value);
+    if (value.length < 2) {
+      setSembakoSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+    setSembakoSearching(true);
+    try {
+      const res = await apiFetch(`/api/penduduk?search=${encodeURIComponent(value)}`);
+      if (res.ok) {
+        const data: Penduduk[] = await res.json();
+        setSembakoSearchResults(data.slice(0, 20)); // Limit results
+        setShowSearchDropdown(data.length > 0);
+      }
+    } catch {
+      setSembakoSearchResults([]);
+    } finally {
+      setSembakoSearching(false);
+    }
+  }, []);
+
+  // Add penduduk as penerima sembako
+  const handleAddSembako = async (p: Penduduk) => {
+    setSembakoAdding(p.nik);
+    try {
+      const tglLahir = p.tanggalLahir
+        ? new Date(p.tanggalLahir).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+
+      const res = await apiFetch('/api/sembako', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noKK: p.noKK,
+          nik: p.nik,
+          namaLengkap: p.namaLengkap,
+          jenisKelamin: p.jenisKelamin,
+          statusKeluarga: p.statusKeluarga,
+          tanggalLahir: tglLahir,
+          alamat: p.alamat || 'KP. CEMPLANG',
+          rt: p.rt || '001',
+          rw: p.rw || '002',
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`${p.namaLengkap} berhasil ditambahkan sebagai penerima sembako`);
+        setSembakoSearch('');
+        setSembakoSearchResults([]);
+        setShowSearchDropdown(false);
+        fetchSembako();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || 'Gagal menambahkan penerima');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    } finally {
+      setSembakoAdding(null);
+    }
+  };
+
+  // Delete single sembako recipient
+  const handleDeleteSembako = async (id: number, nama: string) => {
+    try {
+      const res = await apiFetch(`/api/sembako?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success(`${nama} dihapus dari daftar penerima`);
+        fetchSembako();
+      } else {
+        toast.error('Gagal menghapus');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    }
+  };
+
+  // Delete all sembako recipients
+  const handleDeleteAllSembako = async () => {
+    try {
+      const res = await apiFetch('/api/sembako?all=true', { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || 'Semua data berhasil dihapus');
+        fetchSembako();
+      } else {
+        toast.error('Gagal menghapus semua data');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    }
+  };
+
+  // Export sembako Excel
+  const handleExportSembako = async () => {
+    try {
+      const res = await apiFetch('/api/sembako/export');
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const today = new Date().toISOString().split('T')[0];
+        link.download = `penerima_sembako_desa_${today}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
+        toast.success('File Excel berhasil didownload');
+      } else {
+        const err = await res.json();
+        toast.error(err.error || 'Gagal mengekspor data');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    }
+  };
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    if (!showSearchDropdown) return;
+    const handleClick = () => setShowSearchDropdown(false);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [showSearchDropdown]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -365,157 +559,423 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
   return (
     <div className="space-y-3">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-emerald-600" />
-          <h2 className="text-lg font-bold text-emerald-800">Bantuan Sosial & BPJS</h2>
-          <Badge variant="secondary" className="text-xs">{penduduk.length} penduduk</Badge>
-          <Badge className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Tetap + Sementara</Badge>
-        </div>
-        <div className="flex gap-2 items-center">
-          <a
-            href="https://cekbansos.kemensos.go.id/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            cekbansos.kemensos.go.id
-          </a>
-          <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleExportCSV}>
-            <Download className="h-3 w-3 mr-1" /> Export CSV
-          </Button>
-        </div>
+      {/* ==================== VIEW TOGGLE ==================== */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveView('bansos')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeView === 'bansos'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          Data Bansos
+        </button>
+        <button
+          onClick={() => setActiveView('sembako')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeView === 'sembako'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          <Package className="h-3.5 w-3.5" />
+          Penerima Sembako Desa
+        </button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Cari nama, NIK, No. KK..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      {/* ==================== BANSOS VIEW ==================== */}
+      {activeView === 'bansos' && (
+        <>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-emerald-600" />
+              <h2 className="text-lg font-bold text-emerald-800">Bantuan Sosial & BPJS</h2>
+              <Badge variant="secondary" className="text-xs">{penduduk.length} penduduk</Badge>
+              <Badge className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Tetap + Sementara</Badge>
+            </div>
+            <div className="flex gap-2 items-center">
+              <a
+                href="https://cekbansos.kemensos.go.id/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                cekbansos.kemensos.go.id
+              </a>
+              <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleExportCSV}>
+                <Download className="h-3 w-3 mr-1" /> Export CSV
+              </Button>
+            </div>
+          </div>
 
-      {/* KK List */}
-      <ScrollArea className="max-h-[calc(100vh-260px)]">
-        <div className="space-y-2">
-          {kkGroups.map(group => {
-            const isExpanded = expandedKK.has(group.noKK);
-            const totalL = (group.kepala?.jenisKelamin === 'LAKI-LAKI' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'LAKI-LAKI').length;
-            const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
-            const allBantuan = new Set<string>();
-            const allMembers = [group.kepala, ...group.anggota].filter(Boolean) as Penduduk[];
-            const hasSementara = allMembers.some(p => p._isSementara);
-            allMembers.forEach(p => {
-              try {
-                JSON.parse(p.bantuan || '[]').forEach((b: string) => {
-                  if (b !== 'TIDAK' && b !== '') allBantuan.add(b);
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari nama, NIK, No. KK..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* KK List */}
+          <ScrollArea className="max-h-[calc(100vh-320px)]">
+            <div className="space-y-2">
+              {kkGroups.map(group => {
+                const isExpanded = expandedKK.has(group.noKK);
+                const totalL = (group.kepala?.jenisKelamin === 'LAKI-LAKI' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'LAKI-LAKI').length;
+                const totalP = (group.kepala?.jenisKelamin === 'PEREMPUAN' ? 1 : 0) + group.anggota.filter(a => a.jenisKelamin === 'PEREMPUAN').length;
+                const allBantuan = new Set<string>();
+                const allMembers = [group.kepala, ...group.anggota].filter(Boolean) as Penduduk[];
+                const hasSementara = allMembers.some(p => p._isSementara);
+                allMembers.forEach(p => {
+                  try {
+                    JSON.parse(p.bantuan || '[]').forEach((b: string) => {
+                      if (b !== 'TIDAK' && b !== '') allBantuan.add(b);
+                    });
+                  } catch { /* skip invalid JSON */ }
                 });
-              } catch { /* skip invalid JSON */ }
-            });
 
-            return (
-              <Card key={group.noKK} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {/* KK Header */}
-                  <button
-                    onClick={() => toggleExpand(group.noKK)}
-                    className="w-full flex items-center gap-2 p-3 hover:bg-emerald-50 transition-colors text-left"
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-emerald-600 shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="font-semibold text-sm truncate">{group.kepala?.namaLengkap || '-'}</p>
-                        <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">KK</Badge>
-                        {hasSementara && (
-                          <Badge className="text-[9px] px-1.5 py-0 bg-amber-500 text-white hover:bg-amber-500">SEMENTARA</Badge>
+                return (
+                  <Card key={group.noKK} className="overflow-hidden">
+                    <CardContent className="p-0">
+                      {/* KK Header */}
+                      <button
+                        onClick={() => toggleExpand(group.noKK)}
+                        className="w-full flex items-center gap-2 p-3 hover:bg-emerald-50 transition-colors text-left"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-emerald-600 shrink-0" />
                         )}
-                        {allBantuan.size > 0 && (
-                          <div className="flex flex-wrap gap-0.5">
-                            {Array.from(allBantuan).map(b => (
-                              <Badge key={b} className="text-[8px] px-1 py-0 bg-orange-100 text-orange-700 hover:bg-orange-100">{b}</Badge>
-                            ))}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-sm truncate">{group.kepala?.namaLengkap || '-'}</p>
+                            <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">KK</Badge>
+                            {hasSementara && (
+                              <Badge className="text-[9px] px-1.5 py-0 bg-amber-500 text-white hover:bg-amber-500">SEMENTARA</Badge>
+                            )}
+                            {allBantuan.size > 0 && (
+                              <div className="flex flex-wrap gap-0.5">
+                                {Array.from(allBantuan).map(b => (
+                                  <Badge key={b} className="text-[8px] px-1 py-0 bg-orange-100 text-orange-700 hover:bg-orange-100">{b}</Badge>
+                                ))}
+                              </div>
+                            )}
+                            {group.kepala?.desil && (
+                              <Badge className="text-[8px] px-1 py-0 bg-purple-100 text-purple-700 hover:bg-purple-100">{group.kepala.desil}</Badge>
+                            )}
                           </div>
-                        )}
-                        {group.kepala?.desil && (
-                          <Badge className="text-[8px] px-1 py-0 bg-purple-100 text-purple-700 hover:bg-purple-100">{group.kepala.desil}</Badge>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        KK: {group.noKK} · NIK: {group.kepala?.nik || '-'}
-                      </p>
-                    </div>
-                    <div className="flex gap-1 items-center shrink-0">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">L:{totalL}</Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">P:{totalP}</Badge>
-                    </div>
-                  </button>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            KK: {group.noKK} · NIK: {group.kepala?.nik || '-'}
+                          </p>
+                        </div>
+                        <div className="flex gap-1 items-center shrink-0">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">L:{totalL}</Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">P:{totalP}</Badge>
+                        </div>
+                      </button>
 
-                  {/* Expanded Members */}
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 bg-gray-50/50">
-                      {/* Table Header */}
-                      <div className="hidden sm:grid grid-cols-[24px_1fr_60px_36px_52px_1fr_80px_52px] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
-                        <span>No</span>
-                        <span>Nama / NIK</span>
-                        <span className="text-center">Status</span>
-                        <span className="text-center">JK</span>
-                        <span className="text-center">Desil</span>
-                        <span className="text-center">Bantuan</span>
-                        <span className="text-center">BPJS</span>
-                        <span></span>
-                      </div>
+                      {/* Expanded Members */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 bg-gray-50/50">
+                          {/* Table Header */}
+                          <div className="hidden sm:grid grid-cols-[24px_1fr_60px_36px_52px_1fr_80px_52px] gap-2 px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
+                            <span>No</span>
+                            <span>Nama / NIK</span>
+                            <span className="text-center">Status</span>
+                            <span className="text-center">JK</span>
+                            <span className="text-center">Desil</span>
+                            <span className="text-center">Bantuan</span>
+                            <span className="text-center">BPJS</span>
+                            <span></span>
+                          </div>
 
-                      {/* KK Head Row */}
-                      {group.kepala && (
-                        <PendudukRow
-                          penduduk={group.kepala}
-                          index={1}
-                          isKK
-                          isAdmin={isAdmin}
-                          onUpdate={openUpdateDialog}
-                          onCekBansos={handleCekBansos}
-                          renderBantuanBadges={renderBantuanBadges}
-                          renderBPJSBadge={renderBPJSBadge}
-                          renderDesilBadge={renderDesilBadge}
-                        />
+                          {/* KK Head Row */}
+                          {group.kepala && (
+                            <PendudukRow
+                              penduduk={group.kepala}
+                              index={1}
+                              isKK
+                              isAdmin={isAdmin}
+                              onUpdate={openUpdateDialog}
+                              onCekBansos={handleCekBansos}
+                              renderBantuanBadges={renderBantuanBadges}
+                              renderBPJSBadge={renderBPJSBadge}
+                              renderDesilBadge={renderDesilBadge}
+                            />
+                          )}
+                          {/* Anggota Rows */}
+                          {group.anggota.map((a, idx) => (
+                            <PendudukRow
+                              key={a.id}
+                              penduduk={a}
+                              index={idx + 2}
+                              isKK={false}
+                              isAdmin={isAdmin}
+                              onUpdate={openUpdateDialog}
+                              onCekBansos={handleCekBansos}
+                              renderBantuanBadges={renderBantuanBadges}
+                              renderBPJSBadge={renderBPJSBadge}
+                              renderDesilBadge={renderDesilBadge}
+                            />
+                          ))}
+                        </div>
                       )}
-                      {/* Anggota Rows */}
-                      {group.anggota.map((a, idx) => (
-                        <PendudukRow
-                          key={a.id}
-                          penduduk={a}
-                          index={idx + 2}
-                          isKK={false}
-                          isAdmin={isAdmin}
-                          onUpdate={openUpdateDialog}
-                          onCekBansos={handleCekBansos}
-                          renderBantuanBadges={renderBantuanBadges}
-                          renderBPJSBadge={renderBPJSBadge}
-                          renderDesilBadge={renderDesilBadge}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-          {kkGroups.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>Tidak ada data penduduk</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {kkGroups.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Tidak ada data penduduk</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </>
+      )}
+
+      {/* ==================== SEMBAKO VIEW ==================== */}
+      {activeView === 'sembako' && (
+        <>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-emerald-600" />
+              <h2 className="text-lg font-bold text-emerald-800">Penerima Sembako Desa</h2>
+              <Badge variant="secondary" className="text-xs">{sembakoData.length} penerima</Badge>
+            </div>
+            <div className="flex gap-2 items-center flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={handleExportSembako}
+                disabled={sembakoData.length === 0}
+              >
+                <Download className="h-3 w-3 mr-1" /> Export Excel
+              </Button>
+              {isAdmin && sembakoData.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-xs h-7 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700">
+                      <Trash2 className="h-3 w-3 mr-1" /> Hapus Semua
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Hapus Semua Data?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tindakan ini akan menghapus semua {sembakoData.length} data penerima sembako desa. Data yang dihapus tidak dapat dikembalikan.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Batal</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAllSembako}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Ya, Hapus Semua
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          </div>
+
+          {/* Search Penduduk for Adding */}
+          {isAdmin && (
+            <div className="relative">
+              <div className="relative">
+                <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari penduduk berdasarkan nama, NIK, atau No. KK..."
+                  value={sembakoSearch}
+                  onChange={e => handleSembakoSearch(e.target.value)}
+                  onFocus={e => { if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
+                  className="pl-9 pr-8"
+                />
+                {sembakoSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
+                  </div>
+                )}
+                {sembakoSearch && !sembakoSearching && (
+                  <button
+                    onClick={() => { setSembakoSearch(''); setSembakoSearchResults([]); setShowSearchDropdown(false); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search Dropdown */}
+              {showSearchDropdown && sembakoSearchResults.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  {sembakoSearchResults.map(p => {
+                    const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
+                    return (
+                      <div
+                        key={p.nik}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-emerald-50 border-b border-gray-50 last:border-b-0"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
+                            <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                              {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                            </Badge>
+                            <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
+                              {p.statusKeluarga}
+                            </Badge>
+                            {p._isSementara && (
+                              <Badge className="text-[8px] px-1 py-0 bg-amber-500 text-white hover:bg-amber-500">SEM</Badge>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            NIK: {p.nik} · KK: {p.noKK}
+                          </p>
+                        </div>
+                        {alreadyAdded ? (
+                          <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                            onClick={() => handleAddSembako(p)}
+                            disabled={sembakoAdding === p.nik}
+                          >
+                            {sembakoAdding === p.nik ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                            ) : (
+                              <>
+                                <Plus className="h-3 w-3 mr-0.5" />
+                                Tambah
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
-        </div>
-      </ScrollArea>
+
+          {/* Sembako Recipient List */}
+          <ScrollArea className="max-h-[calc(100vh-380px)]">
+            {sembakoLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
+              </div>
+            ) : sembakoData.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground space-y-2">
+                <Package className="h-10 w-10 mx-auto text-gray-300" />
+                <p className="text-sm">Belum ada data penerima sembako desa</p>
+                {isAdmin && (
+                  <p className="text-[11px]">Gunakan pencarian di atas untuk menambah penduduk</p>
+                )}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  {/* Desktop Table */}
+                  <div className="hidden sm:block">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 px-3 py-2 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
+                      <span>No</span>
+                      <span>No KK</span>
+                      <span>Nama Lengkap</span>
+                      <span className="text-center">JK</span>
+                      <span>Status KK</span>
+                      <span>Alamat</span>
+                      <span></span>
+                    </div>
+                    {sembakoData.map((s, i) => (
+                      <div
+                        key={s.id}
+                        className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 items-center px-3 py-2 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="text-[11px] text-muted-foreground">{i + 1}</span>
+                        <div>
+                          <span className="text-[10px] text-muted-foreground font-mono">{s.noKK}</span>
+                          <p className="text-[10px] text-muted-foreground font-mono">{s.nik}</p>
+                        </div>
+                        <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
+                        <span className="text-[10px] text-center">
+                          <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                            {s.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                          </Badge>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground truncate">{s.statusKeluarga}</span>
+                        <span className="text-[10px] text-muted-foreground truncate">{s.alamat}</span>
+                        {isAdmin && (
+                          <div className="shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                              title="Hapus"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Mobile Cards */}
+                  <div className="sm:hidden divide-y divide-gray-50">
+                    {sembakoData.map((s, i) => (
+                      <div key={s.id} className="px-3 py-2.5 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground">{i + 1}.</span>
+                              <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
+                              <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                {s.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                              </Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{s.nik}</p>
+                            <p className="text-[10px] text-muted-foreground">{s.statusKeluarga}</p>
+                          </div>
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-red-500 shrink-0"
+                              onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="mt-1 pl-4">
+                          <p className="text-[10px] text-muted-foreground">KK: {s.noKK}</p>
+                          <p className="text-[10px] text-muted-foreground">{s.alamat} - RT {s.rt}/RW {s.rw}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </ScrollArea>
+        </>
+      )}
 
       {/* ==================== UPDATE DIALOG ==================== */}
       <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
