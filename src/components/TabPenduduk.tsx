@@ -340,7 +340,11 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       namaIbu: p.namaIbu,
       namaPanggilan: p.namaPanggilan || '',
       noHP: p.noHP || '',
-      punyaKTP: p.punyaKTP,
+      punyaKTP: (() => {
+        if (p.punyaKTP === 'RUSAK' || p.punyaKTP === 'HILANG') return p.punyaKTP;
+        const umur = hitungUmur(p.tanggalLahir);
+        return umur.umurTahun >= 19 ? 'PUNYA' : p.punyaKTP;
+      })(),
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
       alamat: p.alamat || ALAMAT_DEFAULT,
