@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
         noHP: noHP || null,
         punyaKTP: (() => {
-          if (punyaKTP === 'RUSAK' || punyaKTP === 'HILANG') return punyaKTP;
+          if (punyaKTP === 'RUSAK' || punyaKTP === 'HILANG' || punyaKTP === 'PUNYA') return punyaKTP;
           if (tanggalLahir) {
             const umur = hitungUmur(new Date(tanggalLahir));
             return umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
@@ -159,8 +159,11 @@ export async function PUT(request: NextRequest) {
     if (data.namaPanggilan !== undefined) updateData.namaPanggilan = data.namaPanggilan ? toUpperCase(data.namaPanggilan) : null;
     if (data.noHP !== undefined) updateData.noHP = data.noHP || null;
     if (data.punyaKTP !== undefined) {
-      // Auto-set PUNYA jika usia >= 19, kecuali RUSAK/HILANG
-      if (data.punyaKTP !== 'RUSAK' && data.punyaKTP !== 'HILANG') {
+      // Hormati pilihan manual: RUSAK, HILANG, PUNYA tetap disimpan apa adanya
+      if (data.punyaKTP === 'RUSAK' || data.punyaKTP === 'HILANG' || data.punyaKTP === 'PUNYA') {
+        updateData.punyaKTP = data.punyaKTP;
+      } else {
+        // 'BELUM' atau nilai lain — auto-set berdasarkan usia
         const tgl = data.tanggalLahir || (await db.penduduk.findUnique({ where: { id }, select: { tanggalLahir: true } }))?.tanggalLahir;
         if (tgl) {
           const umur = hitungUmur(new Date(tgl));
@@ -168,12 +171,10 @@ export async function PUT(request: NextRequest) {
         } else {
           updateData.punyaKTP = data.punyaKTP;
         }
-      } else {
-        updateData.punyaKTP = data.punyaKTP;
       }
     }
-    // Jika tanggalLahir diubah, otomatis update punyaKTP
-    if (data.tanggalLahir !== undefined) {
+    // Jika tanggalLahir diubah DAN punyaKTP tidak diatur manual, otomatis update punyaKTP
+    if (data.tanggalLahir !== undefined && data.punyaKTP === undefined) {
       const umur = hitungUmur(new Date(data.tanggalLahir));
       updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
     }
