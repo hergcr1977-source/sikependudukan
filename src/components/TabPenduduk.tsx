@@ -283,7 +283,20 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   };
 
   const updateAnggotaField = (index: number, field: string, value: string | string[]) => {
-    setAnggotaList(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+    setAnggotaList(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const next = { ...item, [field]: value };
+      // Auto-set punyaKTP = PUNYA jika usia >= 19 tahun
+      if (field === 'tanggalLahir' && value) {
+        const umur = hitungUmur(value as string);
+        if (umur.umurTahun >= 19) {
+          next.punyaKTP = 'PUNYA';
+        } else {
+          next.punyaKTP = 'BELUM';
+        }
+      }
+      return next;
+    }));
   };
 
   const toggleAnggotaExpand = (index: number) => {
@@ -669,6 +682,15 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const updateField = (field: string, value: string | string[]) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
+      // Auto-set punyaKTP = PUNYA jika usia >= 19 tahun
+      if (field === 'tanggalLahir' && value) {
+        const umur = hitungUmur(value as string);
+        if (umur.umurTahun >= 19) {
+          next.punyaKTP = 'PUNYA';
+        } else {
+          next.punyaKTP = 'BELUM';
+        }
+      }
       // Auto-propagate ke semua anggota (mode KK_BARU)
       if (!editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
         const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];

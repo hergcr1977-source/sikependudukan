@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
-import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
+import { toUpperCase, validateNIK, validateNoKK, hitungUmur } from '@/lib/utils-kependudukan';
 
 
 export const dynamic = 'force-dynamic';
@@ -91,7 +91,14 @@ export async function POST(request: NextRequest) {
         namaIbu: toUpperCase(namaIbu),
         namaPanggilan: namaPanggilan ? toUpperCase(namaPanggilan) : null,
         noHP: noHP || null,
-        punyaKTP: punyaKTP || 'BELUM',
+        punyaKTP: (() => {
+          if (punyaKTP === 'RUSAK' || punyaKTP === 'HILANG') return punyaKTP;
+          if (tanggalLahir) {
+            const umur = hitungUmur(new Date(tanggalLahir));
+            return umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+          }
+          return punyaKTP || 'BELUM';
+        })(),
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs || null,
         desil: desil || null,
@@ -151,7 +158,25 @@ export async function PUT(request: NextRequest) {
     if (data.namaIbu !== undefined) updateData.namaIbu = toUpperCase(data.namaIbu);
     if (data.namaPanggilan !== undefined) updateData.namaPanggilan = data.namaPanggilan ? toUpperCase(data.namaPanggilan) : null;
     if (data.noHP !== undefined) updateData.noHP = data.noHP || null;
-    if (data.punyaKTP !== undefined) updateData.punyaKTP = data.punyaKTP;
+    if (data.punyaKTP !== undefined) {
+      // Auto-set PUNYA jika usia >= 19, kecuali RUSAK/HILANG
+      if (data.punyaKTP !== 'RUSAK' && data.punyaKTP !== 'HILANG') {
+        const tgl = data.tanggalLahir || (await db.penduduk.findUnique({ where: { id }, select: { tanggalLahir: true } }))?.tanggalLahir;
+        if (tgl) {
+          const umur = hitungUmur(new Date(tgl));
+          updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+        } else {
+          updateData.punyaKTP = data.punyaKTP;
+        }
+      } else {
+        updateData.punyaKTP = data.punyaKTP;
+      }
+    }
+    // Jika tanggalLahir diubah, otomatis update punyaKTP
+    if (data.tanggalLahir !== undefined) {
+      const umur = hitungUmur(new Date(data.tanggalLahir));
+      updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+    }
     if (data.bantuan !== undefined) updateData.bantuan = JSON.stringify(data.bantuan);
     if (data.bpjs !== undefined) updateData.bpjs = data.bpjs || null;
     if (data.desil !== undefined) updateData.desil = data.desil || null;
