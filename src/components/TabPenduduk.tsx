@@ -148,7 +148,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const FILTER_OPTIONS = [
     { value: 'KK_PEREMPUAN', label: 'KK Perempuan', description: 'Kepala keluarga perempuan' },
     { value: 'KK_LAKI', label: 'KK Laki-laki', description: 'Kepala keluarga laki-laki' },
-    { value: 'WAJIB_KTP_17', label: 'Wajib KTP 17 Thn', description: 'Usia baru masuk/tepat 17 tahun' },
+    { value: 'WAJIB_KTP_17', label: 'Wajib KTP 17 Thn', description: 'Usia 17-18 tahun yang belum punya KTP' },
     { value: 'USIA_75', label: 'Usia 75+ Thn', description: 'Usia 75 tahun ke atas' },
     { value: 'LANSIA_60', label: 'Lansia 60+ Thn', description: 'Usia 60 tahun ke atas' },
     { value: 'BPJS_TIDAK_ADA', label: 'BPJS Tidak Ada', description: 'Tidak memiliki BPJS' },
@@ -759,8 +759,12 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
     return penduduk.filter(p => {
       switch (activeFilter) {
-        case 'WAJIB_KTP_17':
-          return p.tanggalLahir ? isWajibKTP(p.tanggalLahir) : false;
+        case 'WAJIB_KTP_17': {
+          if (p.punyaKTP === 'PUNYA') return false;
+          if (!p.tanggalLahir) return false;
+          const u = hitungUmur(p.tanggalLahir);
+          return u.umurTahun === 17 || u.umurTahun === 18;
+        }
         case 'USIA_75': {
           const u = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;
           return u ? u.umurTahun >= 75 : false;
