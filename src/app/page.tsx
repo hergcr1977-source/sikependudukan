@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LayoutDashboard, Users, UserRound, CalendarDays, FileSpreadsheet, Shield, Wallet, LogOut } from 'lucide-react';
@@ -54,6 +54,85 @@ export default function Home() {
     window.location.href = '/login';
   };
 
+  // Auto-logout setelah 10 menit tidak ada aktivitas
+  const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 menit
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [countdown, setCountdown] = useState(60);
+
+  const resetInactivityTimer = useCallback(() => {
+    // Clear existing timers
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+
+    setShowInactivityWarning(false);
+
+    // Set warning at 9 minutes (1 minute before logout)
+    warningTimerRef.current = setTimeout(() => {
+      setShowInactivityWarning(true);
+      setCountdown(60);
+
+      // Countdown
+      const countInterval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countInterval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Store interval to clear on activity
+      warningTimerRef.current = setTimeout(() => {
+        clearInterval(countInterval);
+        doAutoLogout();
+      }, 60 * 1000);
+    }, (INACTIVITY_TIMEOUT - 60 * 1000));
+
+    // Set actual logout at 10 minutes
+    inactivityTimerRef.current = setTimeout(() => {
+      doAutoLogout();
+    }, INACTIVITY_TIMEOUT);
+  }, []);
+
+  const doAutoLogout = useCallback(async () => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    setShowInactivityWarning(false);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    window.location.href = '/login';
+  }, []);
+
+  // Listen for user activity
+  useEffect(() => {
+    if (!auth.authenticated) return;
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    const handleActivity = () => {
+      resetInactivityTimer();
+    };
+
+    for (const event of activityEvents) {
+      window.addEventListener(event, handleActivity, { passive: true });
+    }
+
+    // Start timer
+    resetInactivityTimer();
+
+    return () => {
+      for (const event of activityEvents) {
+        window.removeEventListener(event, handleActivity);
+      }
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    };
+  }, [auth.authenticated, resetInactivityTimer]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -74,6 +153,27 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-center" richColors />
+
+      {/* Inactivity Warning Popup */}
+      {showInactivityWarning && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full shadow-2xl text-center space-y-3 animate-in fade-in zoom-in">
+            <div className="text-4xl">⏰</div>
+            <h3 className="text-lg font-bold text-gray-800">Sesi Akan Berakhir</h3>
+            <p className="text-sm text-gray-600">
+              Tidak ada aktivitas selama 9 menit. Anda akan otomatis logout dalam
+            </p>
+            <p className="text-3xl font-bold text-red-600">{countdown} detik</p>
+            <button
+              onClick={() => resetInactivityTimer()}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
+            >
+              Masih Aktif
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-2 py-2 sm:px-4 sm:py-4 relative">
 
         {/* Header */}
