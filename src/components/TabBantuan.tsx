@@ -136,6 +136,9 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
   const [sembakoSearching, setSembakoSearching] = useState(false);
   const [sembakoAdding, setSembakoAdding] = useState<string | null>(null); // NIK being added
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [kkList, setKKList] = useState<Penduduk[]>([]); // KK heads for dropdown
+  const [selectedNoKK, setSelectedNoKK] = useState(''); // selected KK in dropdown
+  const [anggotaList, setAnggotaList] = useState<Penduduk[]>([]); // anggota KK selected
 
   // ==================== BANSOS FUNCTIONS ====================
   const fetchPenduduk = useCallback(async () => {
@@ -420,8 +423,45 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
   // Fetch sembako when switching to sembako view
   useEffect(() => {
-    if (activeView === 'sembako') fetchSembako();
+    if (activeView === 'sembako') {
+      fetchSembako();
+      fetchKKList();
+    }
   }, [activeView, fetchSembako]);
+
+  // Fetch KK heads for dropdown
+  const fetchKKList = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/penduduk');
+      if (res.ok) {
+        const data: Penduduk[] = await res.json();
+        // Ambil semua KK heads, urutkan by nama
+        const heads = data
+          .filter(p => p.statusKeluarga === 'KEPALA KELUARGA')
+          .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id', { sensitivity: 'base' }));
+        setKKList(heads);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Handle select No KK from dropdown → show anggota
+  const handleSelectKK = useCallback(async (noKK: string) => {
+    setSelectedNoKK(noKK);
+    if (!noKK) {
+      setAnggotaList([]);
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/penduduk?noKK=${encodeURIComponent(noKK)}`);
+      if (res.ok) {
+        const data: Penduduk[] = await res.json();
+        setAnggotaList(data);
+        setShowSearchDropdown(true);
+      }
+    } catch {
+      setAnggotaList([]);
+    }
+  }, []);
 
   // Search penduduk for sembako addition
   const handleSembakoSearch = useCallback(async (value: string) => {
@@ -793,33 +833,109 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
 
           {/* Search Penduduk for Adding */}
           {isAdmin && (
-            <div className="relative">
-              <div className="relative">
-                <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari penduduk berdasarkan nama, NIK, atau No. KK..."
-                  value={sembakoSearch}
-                  onChange={e => handleSembakoSearch(e.target.value)}
-                  onFocus={e => { if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
-                  className="pl-9 pr-8"
-                />
-                {sembakoSearching && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
+            <div className="space-y-2">
+              {/* Pilih No KK dari dropdown */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1">
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Pilih No. KK</label>
+                  <Select value={selectedNoKK} onValueChange={handleSelectKK}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="-- Pilih No. KK --" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {kkList.map(kk => (
+                        <SelectItem key={kk.noKK} value={kk.noKK} className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{kk.namaLengkap}</span>
+                            <span className="text-muted-foreground">- {kk.noKK}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Atau cari manual</label>
+                  <div className="relative">
+                    <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Cari nama, NIK, No. KK..."
+                      value={sembakoSearch}
+                      onChange={e => handleSembakoSearch(e.target.value)}
+                      onFocus={e => { if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
+                      className="pl-9 pr-8 text-xs"
+                    />
+                    {sembakoSearching && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
+                      </div>
+                    )}
+                    {sembakoSearch && !sembakoSearching && (
+                      <button
+                        onClick={() => { setSembakoSearch(''); setSembakoSearchResults([]); setShowSearchDropdown(false); }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gray-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                )}
-                {sembakoSearch && !sembakoSearching && (
-                  <button
-                    onClick={() => { setSembakoSearch(''); setSembakoSearchResults([]); setShowSearchDropdown(false); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                </div>
               </div>
 
-              {/* Search Dropdown */}
-              {showSearchDropdown && sembakoSearchResults.length > 0 && (
+              {/* Info KK terpilih */}
+              {selectedNoKK && anggotaList.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                  <p className="text-[11px] font-semibold text-emerald-800 mb-1.5">
+                    Anggota KK: {anggotaList.find(a => a.statusKeluarga === 'KEPALA KELUARGA')?.namaLengkap} ({selectedNoKK})
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {anggotaList.map(p => {
+                      const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
+                      return (
+                        <div
+                          key={p.nik}
+                          className="flex items-center gap-2 px-2 py-1.5 bg-white rounded-md border border-emerald-100"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
+                              <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                              </Badge>
+                              <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
+                                {p.statusKeluarga}
+                              </Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">NIK: {p.nik}</p>
+                          </div>
+                          {alreadyAdded ? (
+                            <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                              onClick={() => handleAddSembako(p)}
+                              disabled={sembakoAdding === p.nik}
+                            >
+                              {sembakoAdding === p.nik ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                              ) : (
+                                <>
+                                  <Plus className="h-3 w-3 mr-0.5" />
+                                  Tambah
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Search Dropdown (manual search) */}
+              {showSearchDropdown && sembakoSearchResults.length > 0 && !selectedNoKK && (
                 <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
                   {sembakoSearchResults.map(p => {
                     const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
