@@ -454,20 +454,27 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
     }
   }, [activeView, fetchSembako]);
 
-  // Fetch KK heads for dropdown
+  // Fetch KK heads for dropdown (exclude KK yang sudah ada di daftar penerima sembako)
   const fetchKKList = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/penduduk');
-      if (res.ok) {
-        const data: Penduduk[] = await res.json();
-        // Ambil semua KK heads, urutkan by nama
-        const heads = data
-          .filter(p => p.statusKeluarga === 'KEPALA KELUARGA')
+      const resPenduduk = await apiFetch('/api/penduduk');
+      const resSembako = await apiFetch('/api/sembako');
+      if (resPenduduk.ok && resSembako.ok) {
+        const pendudukData: Penduduk[] = await resPenduduk.json();
+        const sembakoData: PenerimaSembako[] = await resSembako.json();
+        // Ambil No KK yang sudah terdaftar sebagai penerima
+        const existingNoKK = new Set(sembakoData.map(s => s.noKK));
+        // Ambil KK heads yang belum terdaftar, urutkan by nama
+        const heads = pendudukData
+          .filter(p => p.statusKeluarga === 'KEPALA KELUARGA' && !existingNoKK.has(p.noKK))
           .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id', { sensitivity: 'base' }));
         setKKList(heads);
       }
     } catch { /* ignore */ }
   }, []);
+
+  // Generate key to force Select re-render when kkList changes
+  const kkDropdownKey = kkList.map(k => k.noKK).sort().join('|');
 
   // Handle select No KK from dropdown → show anggota
   const handleSelectKK = useCallback(async (noKK: string) => {
@@ -557,12 +564,22 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
   };
 
   // Delete single sembako recipient
-  const handleDeleteSembako = async (id: number, nama: string) => {
+  const handleDeleteSembako = async (id: number, nama: string, noKK?: string) => {
     try {
       const res = await apiFetch(`/api/sembako?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`${nama} dihapus dari daftar penerima`);
-        fetchSembako();
+        // Jika noKK diberikan, cek apakah KK ini masih ada di daftar penerima
+        // Jika sudah tidak ada, kembalikan KK ke dropdown
+        if (noKK) {
+          fetchSembako().then(() => {
+            // setSembakoData sudah diperbarui oleh fetchSembako
+          });
+        } else {
+          fetchSembako();
+        }
+        // Re-fetch KK list agar dropdown sinkron dengan data penerima
+        fetchKKList();
       } else {
         toast.error('Gagal menghapus');
       }
@@ -579,6 +596,8 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
         const data = await res.json();
         toast.success(data.message || 'Semua data berhasil dihapus');
         fetchSembako();
+        // Kembalikan semua KK ke dropdown
+        fetchKKList();
       } else {
         toast.error('Gagal menghapus semua data');
       }
@@ -973,7 +992,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                   <div className="flex flex-col sm:flex-row gap-2">
                     <div className="flex-1">
                       <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Pilih No. KK</label>
-                      <Select value={selectedNoKK} onValueChange={handleSelectKK}>
+                      <Select key={kkDropdownKey} value={selectedNoKK} onValueChange={handleSelectKK}>
                         <SelectTrigger className="text-xs">
                           <SelectValue placeholder="-- Pilih No. KK --" />
                         </SelectTrigger>
@@ -1176,7 +1195,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap, s.noKK)}
                                   title="Hapus"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -1208,7 +1227,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                                   size="sm"
                                   variant="ghost"
                                   className="h-6 w-6 p-0 text-red-500 shrink-0"
-                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap, s.noKK)}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
