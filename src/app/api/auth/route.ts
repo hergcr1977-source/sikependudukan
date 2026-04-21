@@ -1,48 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
-// Global session store
-interface SessionData {
-  username: string;
-  role: string;
-  nama: string;
-  expires: number;
-}
-
-declare global {
-  var _sessions: Map<string, SessionData> | undefined;
-}
-
-export function getSessions(): Map<string, SessionData> {
-  if (!globalThis._sessions) {
-    globalThis._sessions = new Map();
-  }
-  return globalThis._sessions;
-}
-
-// Cleanup expired sessions every 10 minutes
-if (typeof globalThis._sessionCleanupInit === 'undefined') {
-  globalThis._sessionCleanupInit = true;
-  setInterval(() => {
-    const sessions = getSessions();
-    const now = Date.now();
-    for (const [key, val] of sessions) {
-      if (val.expires < now) sessions.delete(key);
-    }
-  }, 10 * 60 * 1000);
-}
+import { createSession, getSession } from '@/lib/auth-server';
 
 // User database
 const USERS = [
   { username: 'herman', password: 'H3rm4n77', role: 'admin', nama: 'HERMAN GOZALI' },
   { username: 'user', password: 'user1234', role: 'user', nama: 'Pengguna' },
 ];
-
-function generateSessionId(): string {
-  const arr = new Uint8Array(32);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,14 +24,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
     }
 
-    const sessions = getSessions();
-    const sessionId = generateSessionId();
-    const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    sessions.set(sessionId, {
+    // Buat JWT token (disimpan di cookie, tidak perlu server-side session)
+    const token = await createSession({
       username: user.username,
       role: user.role,
       nama: user.nama,
-      expires,
     });
 
     const response = NextResponse.json({
@@ -76,7 +37,7 @@ export async function POST(request: NextRequest) {
       nama: user.nama,
     });
 
-    response.cookies.set('session_id', sessionId, {
+    response.cookies.set('session_id', token, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
@@ -93,18 +54,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
+    const session = await getSession();
 
-    if (!sessionId) {
+    if (!session) {
       return NextResponse.json({ error: 'Belum login' }, { status: 401 });
-    }
-
-    const sessions = getSessions();
-    const session = sessions.get(sessionId);
-    if (!session || session.expires < Date.now()) {
-      sessions.delete(sessionId);
-      return NextResponse.json({ error: 'Sesi expired' }, { status: 401 });
     }
 
     return NextResponse.json({

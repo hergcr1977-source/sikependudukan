@@ -1,23 +1,11 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { SignJWT, jwtVerify } from 'jose';
 
-// Global session store (shared with auth/route.ts)
-interface SessionData {
-  username: string;
-  role: string;
-  nama: string;
-  expires: number;
-}
-
-declare global {
-  var _sessions: Map<string, SessionData> | undefined;
-}
-
-export function getSessions(): Map<string, SessionData> {
-  if (!globalThis._sessions) {
-    globalThis._sessions = new Map();
-  }
-  return globalThis._sessions;
+// JWT Secret — untuk Vercel serverless, gunakan env variable atau fallback
+function getJWTSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET || 'sikependudukan-rt001-rw002-secret-key-2024';
+  return new TextEncoder().encode(secret);
 }
 
 export interface AuthResult {
@@ -27,6 +15,31 @@ export interface AuthResult {
   username: string;
 }
 
+interface JWTPayload {
+  username: string;
+  role: string;
+  nama: string;
+  exp: number;
+}
+
+/**
+ * Buat JWT token dan simpan di cookie
+ */
+export async function createSession(user: { username: string; role: string; nama: string }): Promise<string> {
+  const secret = getJWTSecret();
+  const token = await new SignJWT({
+    username: user.username,
+    role: user.role,
+    nama: user.nama,
+  } as Omit<JWTPayload, 'exp'>)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('24h')
+    .setIssuedAt()
+    .sign(secret);
+
+  return token;
+}
+
 /**
  * Verifikasi session dari cookie dan kembalikan data user.
  * Jika tidak valid, kembalikan null.
@@ -34,22 +47,18 @@ export interface AuthResult {
 export async function getSession(): Promise<AuthResult | null> {
   try {
     const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
+    const token = cookieStore.get('session_id')?.value;
 
-    if (!sessionId) return null;
+    if (!token) return null;
 
-    const sessions = getSessions();
-    const session = sessions.get(sessionId);
-    if (!session || session.expires < Date.now()) {
-      sessions.delete(sessionId);
-      return null;
-    }
+    const secret = getJWTSecret();
+    const { payload } = await jwtVerify(token, secret);
 
     return {
       success: true,
-      role: session.role,
-      nama: session.nama,
-      username: session.username,
+      role: (payload as any).role,
+      nama: (payload as any).nama,
+      username: (payload as any).username,
     };
   } catch {
     return null;
