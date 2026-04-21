@@ -46,6 +46,10 @@ import {
   Trash2,
   UserPlus,
   X,
+  Save,
+  Eye,
+  CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BANTUAN_OPTIONS, BPJS_OPTIONS, DESIL_OPTIONS } from '@/lib/constants';
@@ -102,6 +106,14 @@ interface PenerimaSembako {
   keterangan: string | null;
 }
 
+interface SavedSembako {
+  id: number;
+  nama: string;
+  jumlahPenerima: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface TabBantuanProps {
   isAdmin?: boolean;
   isActive?: boolean;
@@ -139,6 +151,19 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
   const [kkList, setKKList] = useState<Penduduk[]>([]); // KK heads for dropdown
   const [selectedNoKK, setSelectedNoKK] = useState(''); // selected KK in dropdown
   const [anggotaList, setAnggotaList] = useState<Penduduk[]>([]); // anggota KK selected
+
+  // Sembako Save/Riwayat State
+  const [savedSembako, setSavedSembako] = useState<SavedSembako[]>([]);
+  const [sembakoSaving, setSembakoSaving] = useState(false);
+  const [sembakoSaveMsg, setSembakoSaveMsg] = useState('');
+  const [sembakoSaveName, setSembakoSaveName] = useState('');
+  // Sembako Sub-tabs
+  const [sembakoTab, setSembakoTab] = useState<'data' | 'simpan' | 'hapus'>('data');
+  // Save tanggal penerimaan
+  const [saveTanggal, setSaveTanggal] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
 
   // ==================== BANSOS FUNCTIONS ====================
   const fetchPenduduk = useCallback(async () => {
@@ -515,6 +540,10 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
         setSembakoSearch('');
         setSembakoSearchResults([]);
         setShowSearchDropdown(false);
+        // Hapus KK dari dropdown & reset pilihan
+        setKKList(prev => prev.filter(kk => kk.noKK !== p.noKK));
+        setSelectedNoKK('');
+        setAnggotaList([]);
         fetchSembako();
       } else {
         const err = await res.json();
@@ -578,6 +607,94 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
       }
     } catch {
       toast.error('Terjadi kesalahan');
+    }
+  };
+
+  // ==================== SEMBAKO SAVE/RIWAYAT FUNCTIONS ====================
+  const loadSavedSembako = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/sembako/save');
+      if (res.ok) setSavedSembako(await res.json());
+    } catch (error) {
+      console.error('[Sembako Riwayat] Load error:', error);
+    }
+  }, []);
+
+  // Load saved list when switching to sembako view
+  useEffect(() => {
+    if (activeView === 'sembako') loadSavedSembako();
+  }, [activeView, loadSavedSembako]);
+
+  const handleSimpanSembako = async () => {
+    if (sembakoData.length === 0) {
+      toast.error('Tidak ada data penerima untuk disimpan');
+      return;
+    }
+    const [year, month, day] = saveTanggal.split('-');
+    const monthNames = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const tanggalStr = `${parseInt(day)} ${monthNames[parseInt(month)]} ${year}`;
+    const nama = sembakoSaveName.trim() || `Penerima Sembako ${tanggalStr}`;
+    setSembakoSaving(true);
+    setSembakoSaveMsg('');
+    try {
+      const res = await apiFetch('/api/sembako/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nama, data: sembakoData }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setSembakoSaveMsg(`Data berhasil disimpan: ${tanggalStr} (${result.jumlahPenerima} penerima)`);
+        setSembakoSaveName('');
+        loadSavedSembako();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || 'Gagal menyimpan');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    } finally {
+      setSembakoSaving(false);
+    }
+  };
+
+  const handleHapusSnapshot = async (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Hapus data tersimpan ini?')) return;
+    try {
+      const res = await apiFetch(`/api/sembako/save?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const result = await res.json();
+        toast.success(result.message);
+        loadSavedSembako();
+        setSembakoSaveMsg(result.message);
+      } else {
+        toast.error('Gagal menghapus data tersimpan');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan');
+    }
+  };
+
+  const handleLihatSnapshot = async (snapshot: SavedSembako) => {
+    try {
+      const res = await apiFetch(`/api/sembako/save?id=${snapshot.id}&detail=true`);
+      if (!res.ok) {
+        toast.error('Gagal memuat data tersimpan');
+        return;
+      }
+      const result = await res.json();
+      if (result.data && Array.isArray(result.data)) {
+        setSembakoData(result.data);
+        toast.success(`Data "${snapshot.nama}" berhasil dimuat (${result.jumlahPenerima} penerima)`);
+      } else {
+        toast.error('Format data tidak valid');
+      }
+      setSembakoTab('data');
+      setSembakoSaveMsg(`Data dari: ${snapshot.nama}`);
+      fetchKKList();
+    } catch {
+      toast.error('Gagal memuat data tersimpan');
     }
   };
 
@@ -793,303 +910,470 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
               <Badge variant="secondary" className="text-xs">{sembakoData.length} penerima</Badge>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs h-7"
-                onClick={handleExportSembako}
-                disabled={sembakoData.length === 0}
-              >
-                <Download className="h-3 w-3 mr-1" /> Export Excel
-              </Button>
-              {isAdmin && sembakoData.length > 0 && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-xs h-7 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700">
-                      <Trash2 className="h-3 w-3 mr-1" /> Hapus Semua
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Hapus Semua Data?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Tindakan ini akan menghapus semua {sembakoData.length} data penerima sembako desa. Data yang dihapus tidak dapat dikembalikan.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Batal</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteAllSembako}
-                        className="bg-red-600 hover:bg-red-700"
-                      >
-                        Ya, Hapus Semua
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+              {sembakoTab === 'data' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={handleExportSembako}
+                  disabled={sembakoData.length === 0}
+                >
+                  <Download className="h-3 w-3 mr-1" /> Export Excel
+                </Button>
               )}
             </div>
           </div>
 
-          {/* Search Penduduk for Adding */}
+          {/* Sub-tabs: Data Penerima | Simpan | Hapus Semua Data */}
           {isAdmin && (
-            <div className="space-y-2">
-              {/* Pilih No KK dari dropdown */}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="flex-1">
-                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Pilih No. KK</label>
-                  <Select value={selectedNoKK} onValueChange={handleSelectKK}>
-                    <SelectTrigger className="text-xs">
-                      <SelectValue placeholder="-- Pilih No. KK --" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {kkList.map(kk => (
-                        <SelectItem key={kk.noKK} value={kk.noKK} className="text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{kk.namaLengkap}</span>
-                            <span className="text-muted-foreground">- {kk.noKK}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1">
-                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Atau cari manual</label>
-                  <div className="relative">
-                    <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Cari nama, NIK, No. KK..."
-                      value={sembakoSearch}
-                      onChange={e => handleSembakoSearch(e.target.value)}
-                      onFocus={e => { if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
-                      className="pl-9 pr-8 text-xs"
-                    />
-                    {sembakoSearching && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
-                      </div>
-                    )}
-                    {sembakoSearch && !sembakoSearching && (
-                      <button
-                        onClick={() => { setSembakoSearch(''); setSembakoSearchResults([]); setShowSearchDropdown(false); }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gray-600"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Info KK terpilih */}
-              {selectedNoKK && anggotaList.length > 0 && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                  <p className="text-[11px] font-semibold text-emerald-800 mb-1.5">
-                    Anggota KK: {anggotaList.find(a => a.statusKeluarga === 'KEPALA KELUARGA')?.namaLengkap} ({selectedNoKK})
-                  </p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {anggotaList.map(p => {
-                      const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
-                      return (
-                        <div
-                          key={p.nik}
-                          className="flex items-center gap-2 px-2 py-1.5 bg-white rounded-md border border-emerald-100"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
-                              <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
-                              </Badge>
-                              <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
-                                {p.statusKeluarga}
-                              </Badge>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground">NIK: {p.nik}</p>
-                          </div>
-                          {alreadyAdded ? (
-                            <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
-                              onClick={() => handleAddSembako(p)}
-                              disabled={sembakoAdding === p.nik}
-                            >
-                              {sembakoAdding === p.nik ? (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-                              ) : (
-                                <>
-                                  <Plus className="h-3 w-3 mr-0.5" />
-                                  Tambah
-                                </>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Search Dropdown (manual search) */}
-              {showSearchDropdown && sembakoSearchResults.length > 0 && !selectedNoKK && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                  {sembakoSearchResults.map(p => {
-                    const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
-                    return (
-                      <div
-                        key={p.nik}
-                        className="flex items-center gap-2 px-3 py-2 hover:bg-emerald-50 border-b border-gray-50 last:border-b-0"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
-                            <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                              {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
-                            </Badge>
-                            <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
-                              {p.statusKeluarga}
-                            </Badge>
-                            {p._isSementara && (
-                              <Badge className="text-[8px] px-1 py-0 bg-amber-500 text-white hover:bg-amber-500">SEM</Badge>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-muted-foreground">
-                            NIK: {p.nik} · KK: {p.noKK}
-                          </p>
-                        </div>
-                        {alreadyAdded ? (
-                          <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
-                            onClick={() => handleAddSembako(p)}
-                            disabled={sembakoAdding === p.nik}
-                          >
-                            {sembakoAdding === p.nik ? (
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-                            ) : (
-                              <>
-                                <Plus className="h-3 w-3 mr-0.5" />
-                                Tambah
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSembakoTab('data')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  sembakoTab === 'data'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Package className="h-3.5 w-3.5" />
+                Data Penerima
+              </button>
+              <button
+                onClick={() => setSembakoTab('simpan')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  sembakoTab === 'simpan'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                Simpan
+              </button>
+              <button
+                onClick={() => setSembakoTab('hapus')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  sembakoTab === 'hapus'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Hapus Semua Data
+              </button>
             </div>
           )}
 
-          {/* Sembako Recipient List */}
-          <ScrollArea className="max-h-[calc(100vh-380px)]">
-            {sembakoLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
-              </div>
-            ) : sembakoData.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground space-y-2">
-                <Package className="h-10 w-10 mx-auto text-gray-300" />
-                <p className="text-sm">Belum ada data penerima sembako desa</p>
-                {isAdmin && (
-                  <p className="text-[11px]">Gunakan pencarian di atas untuk menambah penduduk</p>
-                )}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="p-0">
-                  {/* Desktop Table */}
-                  <div className="hidden sm:block">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 px-3 py-2 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
-                      <span>No</span>
-                      <span>No KK</span>
-                      <span>Nama Lengkap</span>
-                      <span className="text-center">JK</span>
-                      <span>Status KK</span>
-                      <span>Alamat</span>
-                      <span></span>
+          {/* ==================== TAB: DATA PENERIMA ==================== */}
+          {sembakoTab === 'data' && (
+            <>
+              {/* Search Penduduk for Adding */}
+              {isAdmin && (
+                <div className="space-y-2">
+                  {/* Pilih No KK dari dropdown */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1">
+                      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Pilih No. KK</label>
+                      <Select value={selectedNoKK} onValueChange={handleSelectKK}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue placeholder="-- Pilih No. KK --" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {kkList.map(kk => (
+                            <SelectItem key={kk.noKK} value={kk.noKK} className="text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{kk.namaLengkap}</span>
+                                <span className="text-muted-foreground">- {kk.noKK}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    {sembakoData.map((s, i) => (
-                      <div
-                        key={s.id}
-                        className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 items-center px-3 py-2 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors"
-                      >
-                        <span className="text-[11px] text-muted-foreground">{i + 1}</span>
-                        <div>
-                          <span className="text-[10px] text-muted-foreground font-mono">{s.noKK}</span>
-                          <p className="text-[10px] text-muted-foreground font-mono">{s.nik}</p>
-                        </div>
-                        <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
-                        <span className="text-[10px] text-center">
-                          <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                            {s.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
-                          </Badge>
-                        </span>
-                        <span className="text-[10px] text-muted-foreground truncate">{s.statusKeluarga}</span>
-                        <span className="text-[10px] text-muted-foreground truncate">{s.alamat}</span>
-                        {isAdmin && (
-                          <div className="shrink-0">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
-                              title="Hapus"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                    <div className="flex-1">
+                      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Atau cari manual</label>
+                      <div className="relative">
+                        <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Cari nama, NIK, No. KK..."
+                          value={sembakoSearch}
+                          onChange={e => handleSembakoSearch(e.target.value)}
+                          onFocus={e => { if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
+                          className="pl-9 pr-8 text-xs"
+                        />
+                        {sembakoSearching && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
                           </div>
                         )}
+                        {sembakoSearch && !sembakoSearching && (
+                          <button
+                            onClick={() => { setSembakoSearch(''); setSembakoSearchResults([]); setShowSearchDropdown(false); }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gray-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                    ))}
+                    </div>
                   </div>
 
-                  {/* Mobile Cards */}
-                  <div className="sm:hidden divide-y divide-gray-50">
-                    {sembakoData.map((s, i) => (
-                      <div key={s.id} className="px-3 py-2.5 hover:bg-gray-50 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-muted-foreground">{i + 1}.</span>
-                              <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
-                              <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                  {/* Info KK terpilih */}
+                  {selectedNoKK && anggotaList.length > 0 && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                      <p className="text-[11px] font-semibold text-emerald-800 mb-1.5">
+                        Anggota KK: {anggotaList.find(a => a.statusKeluarga === 'KEPALA KELUARGA')?.namaLengkap} ({selectedNoKK})
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {anggotaList.map(p => {
+                          const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
+                          return (
+                            <div
+                              key={p.nik}
+                              className="flex items-center gap-2 px-2 py-1.5 bg-white rounded-md border border-emerald-100"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
+                                  <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                    {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                                  </Badge>
+                                  <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
+                                    {p.statusKeluarga}
+                                  </Badge>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">NIK: {p.nik}</p>
+                              </div>
+                              {alreadyAdded ? (
+                                <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                                  onClick={() => handleAddSembako(p)}
+                                  disabled={sembakoAdding === p.nik}
+                                >
+                                  {sembakoAdding === p.nik ? (
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                                  ) : (
+                                    <>
+                                      <Plus className="h-3 w-3 mr-0.5" />
+                                      Tambah
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Search Dropdown (manual search) */}
+                  {showSearchDropdown && sembakoSearchResults.length > 0 && !selectedNoKK && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                      {sembakoSearchResults.map(p => {
+                        const alreadyAdded = sembakoData.some(s => s.nik === p.nik);
+                        return (
+                          <div
+                            key={p.nik}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-emerald-50 border-b border-gray-50 last:border-b-0"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-medium truncate">{p.namaLengkap}</span>
+                                <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                  {p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                                </Badge>
+                                <Badge className="text-[8px] px-1 py-0 bg-gray-100 text-gray-600 hover:bg-gray-100">
+                                  {p.statusKeluarga}
+                                </Badge>
+                                {p._isSementara && (
+                                  <Badge className="text-[8px] px-1 py-0 bg-amber-500 text-white hover:bg-amber-500">SEM</Badge>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">
+                                NIK: {p.nik} · KK: {p.noKK}
+                              </p>
+                            </div>
+                            {alreadyAdded ? (
+                              <Badge className="text-[9px] px-1.5 py-0 bg-gray-100 text-gray-400 shrink-0">Sudah Ada</Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                                onClick={() => handleAddSembako(p)}
+                                disabled={sembakoAdding === p.nik}
+                              >
+                                {sembakoAdding === p.nik ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                                ) : (
+                                  <>
+                                    <Plus className="h-3 w-3 mr-0.5" />
+                                    Tambah
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sembako Recipient List */}
+              <ScrollArea className="max-h-[calc(100vh-380px)]">
+                {sembakoLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
+                  </div>
+                ) : sembakoData.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground space-y-2">
+                    <Package className="h-10 w-10 mx-auto text-gray-300" />
+                    <p className="text-sm">Belum ada data penerima sembako desa</p>
+                    {isAdmin && (
+                      <p className="text-[11px]">Gunakan pencarian di atas untuk menambah penduduk</p>
+                    )}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="p-0">
+                      {/* Desktop Table */}
+                      <div className="hidden sm:block">
+                        {/* Table Header */}
+                        <div className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 px-3 py-2 bg-emerald-50 border-b border-emerald-100 text-[10px] font-semibold text-emerald-800">
+                          <span>No</span>
+                          <span>No KK</span>
+                          <span>Nama Lengkap</span>
+                          <span className="text-center">JK</span>
+                          <span>Status KK</span>
+                          <span>Alamat</span>
+                          <span></span>
+                        </div>
+                        {sembakoData.map((s, i) => (
+                          <div
+                            key={s.id}
+                            className="grid grid-cols-[32px_1fr_1fr_52px_72px_1fr_40px] gap-2 items-center px-3 py-2 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="text-[11px] text-muted-foreground">{i + 1}</span>
+                            <div>
+                              <span className="text-[10px] text-muted-foreground font-mono">{s.noKK}</span>
+                              <p className="text-[10px] text-muted-foreground font-mono">{s.nik}</p>
+                            </div>
+                            <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
+                            <span className="text-[10px] text-center">
+                              <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                                 {s.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
                               </Badge>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{s.nik}</p>
-                            <p className="text-[10px] text-muted-foreground">{s.statusKeluarga}</p>
+                            </span>
+                            <span className="text-[10px] text-muted-foreground truncate">{s.statusKeluarga}</span>
+                            <span className="text-[10px] text-muted-foreground truncate">{s.alamat}</span>
+                            {isAdmin && (
+                              <div className="shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                                  title="Hapus"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
-                          {isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-red-500 shrink-0"
-                              onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                        <div className="mt-1 pl-4">
-                          <p className="text-[10px] text-muted-foreground">KK: {s.noKK}</p>
-                          <p className="text-[10px] text-muted-foreground">{s.alamat} - RT {s.rt}/RW {s.rw}</p>
-                        </div>
+                        ))}
                       </div>
-                    ))}
+
+                      {/* Mobile Cards */}
+                      <div className="sm:hidden divide-y divide-gray-50">
+                        {sembakoData.map((s, i) => (
+                          <div key={s.id} className="px-3 py-2.5 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-muted-foreground">{i + 1}.</span>
+                                  <span className="text-xs font-medium truncate">{s.namaLengkap}</span>
+                                  <Badge className="text-[8px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                    {s.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}
+                                  </Badge>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{s.nik}</p>
+                                <p className="text-[10px] text-muted-foreground">{s.statusKeluarga}</p>
+                              </div>
+                              {isAdmin && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-red-500 shrink-0"
+                                  onClick={() => handleDeleteSembako(s.id, s.namaLengkap)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                            <div className="mt-1 pl-4">
+                              <p className="text-[10px] text-muted-foreground">KK: {s.noKK}</p>
+                              <p className="text-[10px] text-muted-foreground">{s.alamat} - RT {s.rt}/RW {s.rw}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </ScrollArea>
+            </>
+          )}
+
+          {/* ==================== TAB: SIMPAN ==================== */}
+          {sembakoTab === 'simpan' && (
+            <>
+              {/* Simpan Data Sembako */}
+              <Card className="border-emerald-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Save className="h-4 w-4 text-emerald-600" />
+                    <h3 className="text-sm font-semibold text-emerald-800">Simpan Data Penerima Sembako</h3>
                   </div>
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex-1">
+                        <Label className="text-[11px] font-medium text-muted-foreground mb-1 block">Tanggal Penerimaan</Label>
+                        <Input
+                          type="date"
+                          value={saveTanggal}
+                          onChange={e => setSaveTanggal(e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-[11px] font-medium text-muted-foreground mb-1 block">Keterangan (opsional)</Label>
+                        <Input
+                          placeholder="Contoh: Sembako Ramadhan 2026"
+                          value={sembakoSaveName}
+                          onChange={e => setSembakoSaveName(e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleSimpanSembako}
+                      disabled={sembakoSaving || sembakoData.length === 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-xs w-full sm:w-auto"
+                    >
+                      {sembakoSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-1" />
+                      )}
+                      {sembakoSaving ? 'Menyimpan...' : `Simpan ${sembakoData.length} Data Penerima`}
+                    </Button>
+                  </div>
+                  {sembakoSaveMsg && (
+                    <div className={`mt-2 text-xs flex items-center gap-1 ${sembakoSaveMsg.includes('berhasil') || sembakoSaveMsg.includes('Data dari') ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      {sembakoSaveMsg}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Simpan data penerima saat ini berdasarkan tanggal penerimaan. Daftar penerima akan berubah setiap periode, sehingga data perlu disimpan untuk setiap periode penerimaan.
+                  </p>
                 </CardContent>
               </Card>
-            )}
-          </ScrollArea>
+
+              {/* Riwayat Data Tersimpan */}
+              <Card className="border-emerald-200">
+                <CardContent className="p-3">
+                  <h3 className="text-sm font-semibold text-emerald-800 mb-2">Riwayat Data Tersimpan</h3>
+                  {savedSembako.length === 0 ? (
+                    <p className="text-xs text-gray-500">Belum ada data sembako yang tersimpan.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {savedSembako.map(s => (
+                        <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                            <span className="font-medium">{s.nama}</span>
+                            <Badge className="text-[9px] px-1 py-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{s.jumlahPenerima} penerima</Badge>
+                            <span className="text-gray-400">
+                              (disimpan: {new Date(s.updatedAt).toLocaleDateString('id-ID')})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => handleLihatSnapshot(s)}>
+                              <Eye className="h-3 w-3 mr-0.5" /> Muat
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-red-500 hover:text-red-700" onClick={(e) => handleHapusSnapshot(s.id, e)}>
+                              <Trash2 className="h-3 w-3 mr-0.5" /> Hapus
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* ==================== TAB: HAPUS SEMUA DATA ==================== */}
+          {sembakoTab === 'hapus' && (
+            <Card className="border-red-200">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Trash2 className="h-5 w-5 text-red-500" />
+                  <h3 className="text-sm font-semibold text-red-700">Hapus Semua Data Penerima Sembako</h3>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs bg-red-100 text-red-700">{sembakoData.length}</Badge>
+                    <p className="text-xs text-red-700 font-medium">data penerima saat ini</p>
+                  </div>
+                  <p className="text-[11px] text-red-600">
+                    Tindakan ini akan menghapus semua data penerima sembako desa yang saat ini aktif.
+                    Data yang sudah disimpan di riwayat tidak akan terhapus.
+                  </p>
+                  <p className="text-[11px] text-red-600 font-medium">
+                    Data yang dihapus tidak dapat dikembalikan. Pastikan data sudah disimpan terlebih dahulu.
+                  </p>
+                </div>
+                {sembakoData.length > 0 ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button className="bg-red-600 hover:bg-red-700 text-xs w-full sm:w-auto">
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Hapus Semua {sembakoData.length} Data Penerima
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus Semua Data</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Anda yakin ingin menghapus semua {sembakoData.length} data penerima sembako desa? Data yang dihapus tidak dapat dikembalikan. Pastikan Anda sudah menyimpan data yang diperlukan.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => { handleDeleteAllSembako(); }}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Ya, Hapus Semua
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p className="text-xs">Tidak ada data penerima untuk dihapus.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 

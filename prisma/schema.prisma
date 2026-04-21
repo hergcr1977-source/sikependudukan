@@ -127,3 +127,12 @@ model PenerimaSembako {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model SembakoSnapshot {
+  id               Int      @id @default(autoincrement())
+  nama             String
+  jumlahPenerima   Int
+  data             String   // JSON array of PenerimaSembako
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
