@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 // PUT - update data kas
 export async function PUT(
@@ -7,6 +8,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const id = params.id;
     const body = await request.json();
     const { tanggal, jenis, jumlah, keterangan } = body;
@@ -65,6 +68,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const id = params.id;
 
     // Cek data ada

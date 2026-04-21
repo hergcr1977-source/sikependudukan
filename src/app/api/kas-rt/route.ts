@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 // Helper: pastikan tabel KasRT ada, jika belum buat otomatis
 async function ensureTable() {
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
 // POST - tambah data kas baru
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const body = await request.json();
     const { tanggal, jenis, jumlah, keterangan } = body;
 

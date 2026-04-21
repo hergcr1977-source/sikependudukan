@@ -7,6 +7,7 @@ import {
   KELURAHAN_DEFAULT, KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
 } from '@/lib/constants';
 import * as XLSX from 'xlsx';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,8 @@ function detectColumns(headerRow: any[]): Record<string, number> {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'File diperlukan' }, { status: 400 });

@@ -30,6 +30,13 @@ export default function Home() {
     checkAuth();
   }, []);
 
+  // Re-verify auth saat tab berubah (pastikan role terbaru)
+  useEffect(() => {
+    if (auth.authenticated && activeTab) {
+      checkAuth();
+    }
+  }, [activeTab]);
+
   const checkAuth = async () => {
     try {
       const res = await fetch('/api/auth');

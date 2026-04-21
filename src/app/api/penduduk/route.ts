@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK, hitungUmur } from '@/lib/utils-kependudukan';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const noKK = searchParams.get('noKK') || '';
@@ -39,6 +42,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const body = await request.json();
     const {
       noKK, nik, namaLengkap, jenisKelamin, statusKeluarga,
@@ -124,6 +129,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const body = await request.json();
     const { id, ...data } = body;
 
@@ -221,6 +228,8 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const deleteAll = searchParams.get('all');

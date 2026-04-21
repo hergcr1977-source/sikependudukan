@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { hitungUmur } from '@/lib/utils-kependudukan';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 // One-time fix: update all penduduk KTP status based on age >= 19
 export async function POST() {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const allPenduduk = await db.penduduk.findMany({
       select: { id: true, tanggalLahir: true, punyaKTP: true },
     });

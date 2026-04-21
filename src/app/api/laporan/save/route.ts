@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP } from '@/lib/utils-kependudukan';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 // POST /api/laporan/save - generate & save laporan for a given month
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const body = await request.json();
     const bulan = parseInt(body.bulan || String(new Date().getMonth() + 1));
     const tahun = parseInt(body.tahun || String(new Date().getFullYear()));
@@ -110,6 +113,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/laporan/save?id=X
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
     const { searchParams } = new URL(request.url);
     const id = parseInt(searchParams.get('id') || '0');
     if (!id) {
