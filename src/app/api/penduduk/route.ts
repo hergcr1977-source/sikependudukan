@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK, hitungUmur } from '@/lib/utils-kependudukan';
-import { requireAdmin, isAuthError } from '@/lib/auth-server';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAuth();
     if (isAuthError(auth)) return auth;
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
