@@ -152,6 +152,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     { value: 'USIA_75', label: 'Usia 75+ Thn', description: 'Usia 75 tahun ke atas' },
     { value: 'LANSIA_60', label: 'Lansia 60+ Thn', description: 'Usia 60 tahun ke atas' },
     { value: 'BPJS_TIDAK_ADA', label: 'BPJS Tidak Ada', description: 'Tidak memiliki BPJS' },
+    { value: 'BELUM_KTP', label: 'Belum Punya KTP', description: 'Status KTP belum' },
   ];
 
   // Anggota list for KK_BARU mode
@@ -737,7 +738,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
   // Filter logic: filter penduduk data based on activeFilter
   // isFlatFilter: true = filter menghasilkan daftar individu (bukan KK groups)
-  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA'].includes(activeFilter);
+  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP'].includes(activeFilter);
 
   const filteredGroups = (() => {
     if (!activeFilter) return kkGroups;
@@ -770,6 +771,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         }
         case 'BPJS_TIDAK_ADA':
           return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
+        case 'BELUM_KTP':
+          return p.punyaKTP === 'BELUM';
         default:
           return false;
       }
