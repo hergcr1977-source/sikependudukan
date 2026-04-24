@@ -173,13 +173,44 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (target.statusKeluarga === 'KEPALA KELUARGA') {
+      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru
+      if (toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru) {
         const remaining = await db.penduduk.findMany({
           where: { noKK: target.noKK, id: { not: target.id } },
+        });
+        if (remaining.length > 0) {
+          // Validasi No KK Baru tidak sudah ada di database
+          const existingNewKK = await db.penduduk.findFirst({
+            where: { noKK: String(noKKBaru) },
+          });
+          if (existingNewKK) {
+            return NextResponse.json(
+              { error: `No. KK ${noKKBaru} sudah terdaftar atas nama ${existingNewKK.namaLengkap}` },
+              { status: 400 }
+            );
+          }
+
+          // Update No KK semua anggota tersisa
+          for (const member of remaining) {
+            await db.penduduk.update({
+              where: { id: member.id },
+              data: { noKK: String(noKKBaru) },
+            });
+          }
+          kkUpdated = true;
+        }
+      }
+
+      // Jika Kepala Keluarga, cek sisa anggota (setelah update No KK jika ada)
+      if (target.statusKeluarga === 'KEPALA KELUARGA') {
+        const currentNoKK = toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru ? String(noKKBaru) : target.noKK;
+        const remaining = await db.penduduk.findMany({
+          where: { noKK: currentNoKK, id: { not: target.id } },
         });
         if (remaining.length === 0) {
           kkDissolved = true;
         } else {
+          // Promosi anggota pertama menjadi Kepala Keluarga
           await db.penduduk.update({
             where: { id: remaining[0].id },
             data: { statusKeluarga: 'KEPALA KELUARGA' },
