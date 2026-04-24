@@ -45,6 +45,8 @@ export async function POST(request: NextRequest) {
       modeDatang, statusKeluarga, tempatLahir, tanggalLahir, agama,
       pendidikan, pekerjaan, statusPerkawinan, kewarganegaraan,
       namaAyah, namaIbu, namaPanggilan, noHP, punyaKTP, bantuan,
+      // Field tambahan untuk MATI/PINDAH (perubahan No KK)
+      noKKStatus, noKKBaru,
     } = body;
 
     const isLahir = toUpperCase(jenisKejadian) === 'LAHIR';
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
     let kkBaru = false;
     let kkDissolved = false;
     let kkHeadChanged = '';
+    let kkUpdated = false;
 
     // ======================== LAHIR: Tambah Penduduk baru (ANAK) ========================
     if (isLahir && noKK && namaLengkap) {
@@ -110,10 +113,39 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Jika Kepala Keluarga, cek sisa anggota
-      if (target.statusKeluarga === 'KEPALA KELUARGA') {
+      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru
+      if (toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru) {
         const remaining = await db.penduduk.findMany({
           where: { noKK: target.noKK, id: { not: target.id } },
+        });
+        if (remaining.length > 0) {
+          // Validasi No KK Baru tidak sudah ada di database
+          const existingNewKK = await db.penduduk.findFirst({
+            where: { noKK: String(noKKBaru) },
+          });
+          if (existingNewKK) {
+            return NextResponse.json(
+              { error: `No. KK ${noKKBaru} sudah terdaftar atas nama ${existingNewKK.namaLengkap}` },
+              { status: 400 }
+            );
+          }
+
+          // Update No KK semua anggota tersisa
+          for (const member of remaining) {
+            await db.penduduk.update({
+              where: { id: member.id },
+              data: { noKK: String(noKKBaru) },
+            });
+          }
+          kkUpdated = true;
+        }
+      }
+
+      // Jika Kepala Keluarga, cek sisa anggota (setelah update No KK jika ada)
+      if (target.statusKeluarga === 'KEPALA KELUARGA') {
+        const currentNoKK = toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru ? String(noKKBaru) : target.noKK;
+        const remaining = await db.penduduk.findMany({
+          where: { noKK: currentNoKK, id: { not: target.id } },
         });
         if (remaining.length === 0) {
           kkDissolved = true;
@@ -238,6 +270,7 @@ export async function POST(request: NextRequest) {
       kkBaru,
       kkDissolved,
       kkHeadChanged,
+      kkUpdated,
     }, { status: 201 });
   } catch (error) {
     console.error(error);

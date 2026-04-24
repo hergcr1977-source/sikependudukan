@@ -89,6 +89,8 @@ interface FormKejadian {
   noHP: string;
   punyaKTP: string;
   bantuan: string[];
+  noKKStatus: 'TETAP' | 'BERUBAH';
+  noKKBaru: string;
 }
 
 const defaultForm: FormKejadian = {
@@ -113,6 +115,8 @@ const defaultForm: FormKejadian = {
   noHP: '',
   punyaKTP: 'BELUM',
   bantuan: [],
+  noKKStatus: 'TETAP',
+  noKKBaru: '',
 };
 
 interface TabKejadianProps {
@@ -212,6 +216,8 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       tanggal: new Date().toISOString().split('T')[0],
       bantuan: [],
       statusKeluarga: activeTab === 'LAHIR' ? 'ANAK' : '',
+      noKKStatus: 'TETAP',
+      noKKBaru: '',
     });
     setShowForm(true);
   };
@@ -284,6 +290,13 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
         setFormError('Pilih penduduk atau masukkan NIK');
         return;
       }
+      // Validasi No KK Baru jika status BERUBAH
+      if (formData.noKKStatus === 'BERUBAH') {
+        if (!formData.noKKBaru || formData.noKKBaru.length !== 16) {
+          setFormError('No. KK Baru harus 16 digit angka');
+          return;
+        }
+      }
     }
 
     if (isLahir && !editingId) {
@@ -351,7 +364,9 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
             toast.success('Kejadian ditambahkan & Anggota keluarga berhasil disimpan');
           }
         } else if (result.pendudukRemoved) {
-          if (result.kkDissolved) {
+          if (result.kkUpdated) {
+            toast.success(`Kejadian ${formData.jenisKejadian} dicatat. No KK anggota tersisa diubah ke ${formData.noKKBaru}.`);
+          } else if (result.kkDissolved) {
             toast.success(`Kejadian ${formData.jenisKejadian} dicatat. KK ${formData.noKK} dibubarkan (sudah tidak ada anggota).`);
           } else if (result.kkHeadChanged) {
             toast.success(`Kejadian ${formData.jenisKejadian} dicatat. KK Head diubah ke ${result.kkHeadChanged}.`);
@@ -642,6 +657,59 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                     <p className="mt-0.5">
                       {formData.namaLengkap} ({formData.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}) — NIK: {formData.nik}
                     </p>
+                  </div>
+                )}
+
+                {/* No KK: Tetap atau Berubah */}
+                {formData.nik && (
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">Status No. KK</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, noKKStatus: 'TETAP', noKKBaru: '' }))}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border-2 p-2.5 text-xs font-semibold transition-all ${
+                          formData.noKKStatus === 'TETAP'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        <Home className="h-3.5 w-3.5" />
+                        No. KK Tetap
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, noKKStatus: 'BERUBAH', noKKBaru: '' }))}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border-2 p-2.5 text-xs font-semibold transition-all ${
+                          formData.noKKStatus === 'BERUBAH'
+                            ? 'border-orange-500 bg-orange-50 text-orange-700'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        No. KK Berubah
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input No KK Baru jika BERUBAH */}
+                {formData.nik && formData.noKKStatus === 'BERUBAH' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-orange-700">No. KK Baru *</Label>
+                    <Input
+                      className="text-sm font-mono border-orange-300 focus:border-orange-500"
+                      placeholder="Masukkan 16 digit No. KK Baru"
+                      value={formData.noKKBaru}
+                      onChange={e => setFormData(prev => ({ ...prev, noKKBaru: e.target.value.replace(/[^0-9]/g, '').slice(0, 16) }))}
+                      maxLength={16}
+                    />
+                    <p className="text-[10px] text-orange-600 mt-0.5">
+                      Semua anggota KK yang tersisa akan otomatis diubah No. KK-nya ke nomor baru ini.
+                    </p>
+                    {formData.noKKBaru.length > 0 && formData.noKKBaru.length < 16 && (
+                      <p className="text-[10px] text-red-500">No. KK harus 16 digit ({formData.noKKBaru.length}/16)</p>
+                    )}
                   </div>
                 )}
 
