@@ -633,6 +633,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                 <div className="space-y-1">
                   <Label className="text-xs">Pilih Penduduk</Label>
                   <Select
+                    key={`penduduk-${formData.noKK}`}
                     value={formData.nik}
                     onValueChange={v => handleSelectMember(v)}
                   >
