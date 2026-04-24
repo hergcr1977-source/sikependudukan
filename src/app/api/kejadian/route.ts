@@ -314,11 +314,18 @@ export async function PUT(request: NextRequest) {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
     const body = await request.json();
-    const { id, ...data } = body;
+    const { id, noKKStatus, noKKBaru, ...data } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
     }
+
+    // Ambil data kejadian asli sebelum update (untuk No KK asli)
+    const existingKejadian = await db.kejadian.findUnique({ where: { id } });
+    if (!existingKejadian) {
+      return NextResponse.json({ error: 'Kejadian tidak ditemukan' }, { status: 404 });
+    }
+    const originalNoKK = existingKejadian.noKK;
 
     const updateData: Record<string, unknown> = {};
     if (data.jenisKejadian !== undefined) updateData.jenisKejadian = toUpperCase(data.jenisKejadian);
@@ -336,7 +343,41 @@ export async function PUT(request: NextRequest) {
       data: updateData,
     });
 
-    return NextResponse.json(result);
+    // Handle No KK change untuk edit MATI/PINDAH
+    let kkUpdated = false;
+    if (toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru) {
+      const jenis = toUpperCase(existingKejadian.jenisKejadian);
+      if (jenis === 'MATI' || jenis === 'PINDAH') {
+        // Cari anggota KK yang tersisa berdasarkan No KK asli
+        const remaining = await db.penduduk.findMany({
+          where: { noKK: originalNoKK },
+        });
+        if (remaining.length > 0) {
+          // Validasi No KK Baru tidak sudah ada di database
+          const existingNewKK = await db.penduduk.findFirst({
+            where: { noKK: String(noKKBaru) },
+          });
+          if (existingNewKK) {
+            return NextResponse.json(
+              { error: `No. KK ${noKKBaru} sudah terdaftar atas nama ${existingNewKK.namaLengkap}` },
+              { status: 400 }
+            );
+          }
+
+          // Update No KK semua anggota tersisa
+          for (const member of remaining) {
+            await db.penduduk.update({
+              where: { id: member.id },
+              data: { noKK: String(noKKBaru) },
+            });
+          }
+          kkUpdated = true;
+        }
+      }
+    }
+
+    revalidatePath('/api/penduduk');
+    return NextResponse.json({ ...result, kkUpdated });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Gagal mengupdate kejadian' }, { status: 500 });

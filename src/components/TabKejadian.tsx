@@ -282,15 +282,18 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
     }
 
     if (isMatiOrPindah) {
-      if (!formData.noKK) {
-        setFormError('Pilih No. KK');
-        return;
+      // Validasi No KK & NIK hanya untuk tambah baru
+      if (!editingId) {
+        if (!formData.noKK) {
+          setFormError('Pilih No. KK');
+          return;
+        }
+        if (!formData.nik) {
+          setFormError('Pilih penduduk atau masukkan NIK');
+          return;
+        }
       }
-      if (!formData.nik) {
-        setFormError('Pilih penduduk atau masukkan NIK');
-        return;
-      }
-      // Validasi No KK Baru jika status BERUBAH
+      // Validasi No KK Baru jika status BERUBAH (tambah baru & edit)
       if (formData.noKKStatus === 'BERUBAH') {
         if (!formData.noKKBaru || formData.noKKBaru.length !== 16) {
           setFormError('No. KK Baru harus 16 digit angka');
@@ -373,6 +376,8 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
           } else {
             toast.success(`Kejadian ${formData.jenisKejadian} dicatat & penduduk dihapus.`);
           }
+        } else if (editingId && result.kkUpdated) {
+          toast.success(`Kejadian diupdate. No KK anggota tersisa diubah ke ${formData.noKKBaru}.`);
         } else {
           toast.success(editingId ? 'Kejadian diupdate' : 'Kejadian ditambahkan');
         }
@@ -627,30 +632,34 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
               </div>
             )}
 
-            {/* ============ MATI / PINDAH: Pilih Penduduk ============ */}
-            {isMatiOrPindah && !editingId && (
+            {/* ============ MATI / PINDAH ============ */}
+            {isMatiOrPindah && (
               <>
-                <div className="space-y-1">
-                  <Label className="text-xs">Pilih Penduduk</Label>
-                  <Select
-                    key={`penduduk-${formData.noKK}`}
-                    value={formData.nik}
-                    onValueChange={v => handleSelectMember(v)}
-                  >
-                    <SelectTrigger className="text-sm">
-                      <SelectValue placeholder={kkMembers.length > 0 ? 'Pilih anggota KK...' : 'Pilih KK terlebih dahulu'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kkMembers.map(m => (
-                        <SelectItem key={m.nik} value={m.nik}>
-                          {m.statusKeluarga === 'KEPALA KELUARGA' ? '⭐ ' : ''}{m.namaLengkap} ({m.nik})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Pilih Penduduk - hanya untuk tambah baru */}
+                {!editingId && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Pilih Penduduk</Label>
+                    <Select
+                      key={`penduduk-${formData.noKK}`}
+                      value={formData.nik}
+                      onValueChange={v => handleSelectMember(v)}
+                    >
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder={kkMembers.length > 0 ? 'Pilih anggota KK...' : 'Pilih KK terlebih dahulu'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kkMembers.map(m => (
+                          <SelectItem key={m.nik} value={m.nik}>
+                            {m.statusKeluarga === 'KEPALA KELUARGA' ? '⭐ ' : ''}{m.namaLengkap} ({m.nik})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-                {formData.nik && (
+                {/* Info Penduduk - tambah baru */}
+                {!editingId && formData.nik && (
                   <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800">
                     <p className="font-semibold">
                       ⚠️ Penduduk akan dihapus dari data KK
@@ -661,7 +670,19 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                   </div>
                 )}
 
-                {/* No KK: Tetap atau Berubah */}
+                {/* Info Penduduk - edit */}
+                {editingId && formData.nik && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
+                    <p className="font-semibold">
+                      ℹ️ Kejadian {formData.jenisKejadian} atas nama:
+                    </p>
+                    <p className="mt-0.5">
+                      {formData.namaLengkap} ({formData.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}) — NIK: {formData.nik}
+                    </p>
+                  </div>
+                )}
+
+                {/* Status No. KK: Tetap atau Berubah - untuk tambah baru DAN edit */}
                 {formData.nik && (
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold">Status No. KK</Label>
@@ -714,16 +735,19 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nama</Label>
-                    <Input className="text-sm bg-gray-50" value={formData.namaLengkap} disabled />
+                {/* Nama & NIK readonly - hanya untuk tambah baru */}
+                {!editingId && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nama</Label>
+                      <Input className="text-sm bg-gray-50" value={formData.namaLengkap} disabled />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">NIK</Label>
+                      <Input className="text-sm bg-gray-50" value={formData.nik} disabled />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">NIK</Label>
-                    <Input className="text-sm bg-gray-50" value={formData.nik} disabled />
-                  </div>
-                </div>
+                )}
               </>
             )}
 
