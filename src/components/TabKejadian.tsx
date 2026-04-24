@@ -671,19 +671,19 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                 )}
 
                 {/* Info Penduduk - edit */}
-                {editingId && formData.nik && (
+                {editingId && formData.namaLengkap && (
                   <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-800">
                     <p className="font-semibold">
                       ℹ️ Kejadian {formData.jenisKejadian} atas nama:
                     </p>
                     <p className="mt-0.5">
-                      {formData.namaLengkap} ({formData.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}) — NIK: {formData.nik}
+                      {formData.namaLengkap} ({formData.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}){formData.nik ? ` — NIK: ${formData.nik}` : ''}
                     </p>
                   </div>
                 )}
 
                 {/* Status No. KK: Tetap atau Berubah - untuk tambah baru DAN edit */}
-                {formData.nik && (
+                {(formData.nik || editingId) && (
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold">Status No. KK</Label>
                     <div className="grid grid-cols-2 gap-2">
@@ -716,7 +716,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                 )}
 
                 {/* Input No KK Baru jika BERUBAH */}
-                {formData.nik && formData.noKKStatus === 'BERUBAH' && (
+                {(formData.nik || editingId) && formData.noKKStatus === 'BERUBAH' && (
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-orange-700">No. KK Baru *</Label>
                     <Input
