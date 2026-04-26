@@ -4,8 +4,8 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page and auth API without authentication
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) {
+  // Allow login page, auth API, and WA webhook without authentication
+  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname.startsWith('/api/wa')) {
     // Add no-cache headers and continue
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
