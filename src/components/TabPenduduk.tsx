@@ -153,6 +153,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     { value: 'LANSIA_60', label: 'Lansia 60+ Thn', description: 'Usia 60 tahun ke atas' },
     { value: 'BPJS_TIDAK_ADA', label: 'BPJS Tidak Ada', description: 'Tidak memiliki BPJS' },
     { value: 'BELUM_KTP', label: 'Belum Punya KTP', description: 'Status KTP belum' },
+    { value: 'BELUM_BANTUAN', label: 'Belum Ada Bantuan', description: 'Belum memiliki bantuan apapun' },
   ];
 
   // Anggota list for KK_BARU mode
@@ -738,7 +739,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
   // Filter logic: filter penduduk data based on activeFilter
   // isFlatFilter: true = filter menghasilkan daftar individu (bukan KK groups)
-  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP'].includes(activeFilter);
+  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP', 'BELUM_BANTUAN'].includes(activeFilter);
 
   const filteredGroups = (() => {
     if (!activeFilter) return kkGroups;
@@ -777,6 +778,15 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
         case 'BELUM_KTP':
           return p.punyaKTP === 'BELUM';
+        case 'BELUM_BANTUAN': {
+          try {
+            const arr = JSON.parse(p.bantuan || '[]');
+            const filtered = arr.filter((b: string) => b !== 'TIDAK' && b !== '');
+            return filtered.length === 0;
+          } catch {
+            return true;
+          }
+        }
         default:
           return false;
       }
