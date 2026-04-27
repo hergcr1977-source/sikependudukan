@@ -39,22 +39,44 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                // HAPUS semua service worker yang pernah terdaftar
                 if ('serviceWorker' in navigator) {
+                  // 1. Hapus semua SW yang terdaftar (termasuk sw.js lama)
                   navigator.serviceWorker.getRegistrations().then(function(regs) {
-                    for (var i = 0; i < regs.length; i++) {
-                      regs[i].unregister();
-                    }
+                    regs.forEach(function(r) { r.unregister(); });
                   });
+
+                  // 2. Hapus semua cache
+                  if ('caches' in window) {
+                    caches.keys().then(function(names) {
+                      names.forEach(function(n) { caches.delete(n); });
+                    });
+                  }
+
+                  // 3. Register kill-sw.js (file BARU, bukan sw.js yang di-cache SW lama)
+                  // File ini akan: skipWaiting → hapus semua cache → unregister semua SW
+                  navigator.serviceWorker.register('/kill-sw.js', { scope: '/' })
+                    .then(function(reg) {
+                      // Force activate segera tanpa menunggu tab ditutup
+                      if (reg.active) {
+                        reg.active.postMessage({ type: 'SKIP_WAITING' });
+                      }
+                    })
+                    .catch(function(err) {
+                      console.log('SW kill registered or error:', err);
+                    });
                 }
-                // HAPUS semua cache yang dibiarkan oleh SW lama
-                if ('caches' in window) {
-                  caches.keys().then(function(names) {
-                    for (var i = 0; i < names.length; i++) {
-                      caches.delete(names[i]);
-                    }
-                  });
-                }
+
+                // 4. Setelah 3 detik, force reload untuk memastikan halaman segar dari server
+                setTimeout(function() {
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(regs) {
+                      if (regs.length === 0) {
+                        // Sudah tidak ada SW, reload untuk ambil halaman dari server
+                        window.location.reload();
+                      }
+                    });
+                  }
+                }, 3000);
               })();
             `,
           }}
