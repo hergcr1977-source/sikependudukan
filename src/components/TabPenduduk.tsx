@@ -739,7 +739,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
   // Filter logic: filter penduduk data based on activeFilter
   // isFlatFilter: true = filter menghasilkan daftar individu (bukan KK groups)
-  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP', 'BELUM_BANTUAN'].includes(activeFilter);
+  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP'].includes(activeFilter);
 
   const filteredGroups = (() => {
     if (!activeFilter) return kkGroups;
@@ -749,6 +749,17 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         return kkGroups.filter(g => g.kepala?.jenisKelamin === 'PEREMPUAN');
       case 'KK_LAKI':
         return kkGroups.filter(g => g.kepala?.jenisKelamin === 'LAKI-LAKI');
+      case 'BELUM_BANTUAN':
+        return kkGroups.filter(g => {
+          if (!g.kepala) return false;
+          try {
+            const arr = JSON.parse(g.kepala.bantuan || '[]');
+            const filtered = arr.filter((b: string) => b !== 'TIDAK' && b !== '');
+            return filtered.length === 0;
+          } catch {
+            return true;
+          }
+        });
       default:
         return kkGroups;
     }
@@ -778,15 +789,6 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           return !p.bpjs || p.bpjs === '' || p.bpjs === 'TIDAK ADA';
         case 'BELUM_KTP':
           return p.punyaKTP === 'BELUM';
-        case 'BELUM_BANTUAN': {
-          try {
-            const arr = JSON.parse(p.bantuan || '[]');
-            const filtered = arr.filter((b: string) => b !== 'TIDAK' && b !== '');
-            return filtered.length === 0;
-          } catch {
-            return true;
-          }
-        }
         default:
           return false;
       }
