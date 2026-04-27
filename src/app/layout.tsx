@@ -32,51 +32,29 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/logo.png" />
-        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta httpEquiv="Pragma" content="no-cache" />
-        <meta httpEquiv="Expires" content="0" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
+                // Cek apakah sudah pernah cleanup SW (sekali saja per browser)
+                if (sessionStorage.getItem('sw_cleaned')) return;
+
                 if ('serviceWorker' in navigator) {
-                  // 1. Hapus semua SW yang terdaftar (termasuk sw.js lama)
+                  // Unregister semua SW lama
                   navigator.serviceWorker.getRegistrations().then(function(regs) {
                     regs.forEach(function(r) { r.unregister(); });
                   });
-
-                  // 2. Hapus semua cache
-                  if ('caches' in window) {
-                    caches.keys().then(function(names) {
-                      names.forEach(function(n) { caches.delete(n); });
-                    });
-                  }
-
-                  // 3. Register kill-sw.js (file BARU, bukan sw.js yang di-cache SW lama)
-                  // File ini akan: skipWaiting → hapus semua cache → unregister semua SW
-                  navigator.serviceWorker.register('/kill-sw.js', { scope: '/' })
-                    .then(function(reg) {
-                      // Force activate segera tanpa menunggu tab ditutup
-                      if (reg.active) {
-                        reg.active.postMessage({ type: 'SKIP_WAITING' });
-                      }
-                    })
-                    .catch(function(err) {
-                      console.log('SW kill registered or error:', err);
-                    });
                 }
 
-                // 4. Setelah 3 detik, force reload untuk memastikan halaman segar dari server
-                setTimeout(function() {
-                  if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(regs) {
-                      if (regs.length === 0) {
-                        // Sudah tidak ada SW, reload untuk ambil halaman dari server
-                        window.location.reload();
-                      }
-                    });
-                  }
-                }, 3000);
+                // Hapus semua cache
+                if ('caches' in window) {
+                  caches.keys().then(function(names) {
+                    names.forEach(function(n) { caches.delete(n); });
+                  });
+                }
+
+                // Tandai sudah dibersihkan (sekali per sesi browser)
+                sessionStorage.setItem('sw_cleaned', '1');
               })();
             `,
           }}
