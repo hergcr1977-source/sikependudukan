@@ -42,6 +42,7 @@ import {
 } from '@/lib/constants';
 import { hitungUmur, isWajibKTP, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
+import * as XLSX from 'xlsx';
 
 interface Penduduk {
   id: number;
@@ -561,21 +562,68 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await apiFetch('/api/penduduk/export');
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `data-penduduk-${new Date().toISOString().split('T')[0]}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        toast.success('Data berhasil diekspor');
+      // Tentukan data yang diekspor berdasarkan filter aktif
+      let exportData: Penduduk[] = [];
+      let fileName = 'data-penduduk';
+
+      if (activeFilter) {
+        const filterLabel = FILTER_OPTIONS.find(f => f.value === activeFilter)?.label || activeFilter;
+        fileName = `data-penduduk-${filterLabel.toLowerCase().replace(/\s+/g, '-')}`;
+
+        if (isFlatFilter) {
+          exportData = flatFilteredList;
+        } else {
+          // KK group filter — gabungkan kepala + anggota dari filtered groups
+          exportData = [];
+          for (const g of filteredGroups) {
+            if (g.kepala) exportData.push(g.kepala);
+            exportData.push(...g.anggota);
+          }
+        }
       } else {
-        toast.error('Gagal mengekspor data');
+        exportData = penduduk;
       }
+
+      if (exportData.length === 0) {
+        toast.error('Tidak ada data untuk diekspor');
+        setExporting(false);
+        return;
+      }
+
+      const headers = [
+        'NO. KK', 'NAMA', 'NIK', 'JK', 'STATUS KK',
+        'TEMPAT', 'TGL LAHIR', 'AGAMA', 'PENDIDIKAN', 'PEKERJAAN',
+        'STATUS KAWIN', 'WARGANEGARAAN', 'AYAH', 'IBU', 'PANGGILAN', 'KETERANGAN',
+      ];
+
+      const rows = exportData.map(p => [
+        p.noKK, p.namaLengkap, p.nik,
+        p.jenisKelamin === 'LAKI-LAKI' ? 'L' : p.jenisKelamin === 'PEREMPUAN' ? 'P' : p.jenisKelamin,
+        p.statusKeluarga, p.tempatLahir, formatTanggal(p.tanggalLahir),
+        p.agama, p.pendidikan, p.pekerjaan, p.statusPerkawinan,
+        p.kewarganegaraan, p.namaAyah, p.namaIbu,
+        p.namaPanggilan || '', p.keterangan || '',
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 25 }, { wch: 20 }, { wch: 5 }, { wch: 20 },
+        { wch: 15 }, { wch: 14 }, { wch: 10 }, { wch: 25 }, { wch: 25 },
+        { wch: 18 }, { wch: 15 }, { wch: 25 }, { wch: 25 }, { wch: 15 }, { wch: 25 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Penduduk');
+      const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${fileName}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Data berhasil diekspor (${exportData.length} orang)`);
     } catch {
       toast.error('Gagal mengekspor data');
     } finally {

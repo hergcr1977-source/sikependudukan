@@ -55,6 +55,7 @@ import { toast } from 'sonner';
 import { BANTUAN_OPTIONS, BPJS_OPTIONS, DESIL_OPTIONS } from '@/lib/constants';
 import { hitungUmur } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
+import * as XLSX from 'xlsx';
 
 interface Penduduk {
   id: number;
@@ -376,9 +377,9 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
     }
   };
 
-  // Export CSV
-  const handleExportCSV = () => {
-    const header = 'No,No KK,NIK,Nama Lengkap,Jenis Kelamin,Status Keluarga,Umur,Status Penduduk,Desil,Bantuan,BPJS,Keterangan\n';
+  // Export Excel
+  const handleExportExcel = () => {
+    const headers = ['No', 'No KK', 'NIK', 'Nama Lengkap', 'Jenis Kelamin', 'Status Keluarga', 'Umur', 'Status Penduduk', 'Desil', 'Bantuan', 'BPJS', 'Keterangan'];
     const rows = penduduk.map((p, i) => {
       let umur = { label: '-' };
       try { umur = hitungUmur(p.tanggalLahir); } catch { /* skip */ }
@@ -388,18 +389,25 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
       const bpjsStr = (p.bpjs && p.bpjs !== 'TIDAK') ? p.bpjs : '-';
       const desilStr = (p.desil && p.desil !== 'TIDAK_ADA') ? p.desil : '-';
       const statusStr = p._isSementara ? 'Sementara' : 'Tetap';
-      return `${i + 1},"${p.noKK}","${p.nik}","${p.namaLengkap}","${p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'}","${p.statusKeluarga}","${umur.label}","${statusStr}","${desilStr}","${bantuanStr}","${bpjsStr}","${p.keterangan || '-'}"`;
-    }).join('\n');
+      return [i + 1, p.noKK, p.nik, p.namaLengkap, p.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P', p.statusKeluarga, umur.label, statusStr, desilStr, bantuanStr, bpjsStr, p.keterangan || '-'];
+    });
 
-    const csv = '\uFEFF' + header + rows;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 12 }, { wch: 20 },
+      { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 25 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Bansos');
+    const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `data_bansos_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `data_bansos_${new Date().toISOString().slice(0, 10)}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success('File CSV berhasil didownload');
+    toast.success('File Excel berhasil didownload');
   };
 
   // Helper: render bantuan badges
@@ -805,8 +813,8 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                 <ExternalLink className="h-3.5 w-3.5" />
                 cekbansos.kemensos.go.id
               </a>
-              <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleExportCSV}>
-                <Download className="h-3 w-3 mr-1" /> Export CSV
+              <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleExportExcel}>
+                <Download className="h-3 w-3 mr-1" /> Export Excel
               </Button>
             </div>
           </div>

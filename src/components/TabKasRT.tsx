@@ -37,6 +37,7 @@ import {
 import { toast } from 'sonner';
 import { BULAN } from '@/lib/constants';
 import { apiFetch } from '@/lib/api';
+import * as XLSX from 'xlsx';
 
 interface KasEntry {
   id: number;
@@ -228,26 +229,34 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     }
   };
 
-  const handleExportCSV = () => {
-    const header = 'No,Tanggal,Jenis,Jumlah,Keterangan\n';
-    const rows = data.map((d, i) => {
-      const jenisLabel = d.jenis === 'PEMASUKAN' ? 'Pemasukan' : 'Pengeluaran';
-      return `${i + 1},"${formatTanggal(d.tanggal)}","${jenisLabel}",${d.jumlah},"${d.keterangan}"`;
-    }).join('\n');
+  const handleExportExcel = () => {
+    const headers = ['No', 'Tanggal', 'Jenis', 'Jumlah', 'Keterangan'];
+    const rows = data.map((d, i) => [
+      i + 1, formatTanggal(d.tanggal), d.jenis === 'PEMASUKAN' ? 'Pemasukan' : 'Pengeluaran', d.jumlah, d.keterangan,
+    ]);
 
     // Tambahkan baris total
-    const totalRow = `\n\n"","","TOTAL PEMASUKAN",${totalPemasukan},""\n"","","TOTAL PENGELUARAN",${totalPengeluaran},""\n"","","SALDO",${saldo},""`;
+    rows.push([]);
+    rows.push(['', '', 'TOTAL PEMASUKAN', totalPemasukan, '']);
+    rows.push(['', '', 'TOTAL PENGELUARAN', totalPengeluaran, '']);
+    rows.push(['', '', 'SALDO', saldo, '']);
 
-    const csv = '\uFEFF' + header + rows + totalRow;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 5 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 30 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Kas RT');
+    const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     const bulanName = BULAN[parseInt(filterBulan) - 1];
-    link.download = `Kas_RT_${bulanName}_${filterTahun}.csv`;
+    link.download = `Kas_RT_${bulanName}_${filterTahun}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success('File CSV berhasil didownload');
+    toast.success('File Excel berhasil didownload');
   };
 
   if (loading) {
@@ -268,8 +277,8 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
           <Badge variant="secondary" className="text-xs">{data.length} transaksi</Badge>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+          <Button variant="outline" size="sm" onClick={handleExportExcel}>
+            <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
           </Button>
           {isAdmin && (
             <Button
