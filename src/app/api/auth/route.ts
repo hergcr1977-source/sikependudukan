@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60,
+      // TANPA maxAge = session cookie → otomatis hilang saat browser ditutup
       path: '/',
     });
 
