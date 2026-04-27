@@ -36,25 +36,33 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                // Cek apakah sudah pernah cleanup SW (sekali saja per browser)
-                if (sessionStorage.getItem('sw_cleaned')) return;
+                if (!('serviceWorker' in navigator)) return;
 
-                if ('serviceWorker' in navigator) {
-                  // Unregister semua SW lama
-                  navigator.serviceWorker.getRegistrations().then(function(regs) {
-                    regs.forEach(function(r) { r.unregister(); });
+                // Tangkap pesan dari SW untuk reload
+                navigator.serviceWorker.addEventListener('message', function(event) {
+                  if (event.data && event.data.type === 'SW_UPDATED') {
+                    window.location.reload();
+                  }
+                });
+
+                // Register/update SW baru (browser selalu fetch sw.js dari network)
+                navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+                  .then(function(reg) {
+                    // Jika ada SW baru yang menunggu, pakai skipWaiting
+                    if (reg.waiting) {
+                      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    // Listen untuk update
+                    reg.addEventListener('updatefound', function() {
+                      var newWorker = reg.installing;
+                      newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                          // SW baru terinstall, tapi SW lama masih aktif
+                          newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                      });
+                    });
                   });
-                }
-
-                // Hapus semua cache
-                if ('caches' in window) {
-                  caches.keys().then(function(names) {
-                    names.forEach(function(n) { caches.delete(n); });
-                  });
-                }
-
-                // Tandai sudah dibersihkan (sekali per sesi browser)
-                sessionStorage.setItem('sw_cleaned', '1');
               })();
             `,
           }}
