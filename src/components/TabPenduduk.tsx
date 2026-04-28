@@ -251,13 +251,31 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       return;
     }
 
-    // Show preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setScanPreview(e.target?.result as string);
-      setShowScanDialog(true);
+    // Resize gambar jika terlalu besar (maks 1600px, JPEG quality 0.8)
+    const MAX_DIM = 1600;
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width;
+      let h = img.height;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+        else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setScanPreview(dataUrl);
+        setShowScanDialog(true);
+      }
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      toast.error('Gagal memuat gambar');
+    };
+    img.src = URL.createObjectURL(file);
   };
 
   const processScanKK = async () => {

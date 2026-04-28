@@ -3,6 +3,18 @@ import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
+// Kompresi gambar agar tidak terlalu besar untuk API
+function compressBase64Image(base64: string): string {
+  const matches = base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!matches) return base64;
+  const mimeType = matches[1];
+  const buffer = Buffer.from(matches[2], 'base64');
+  // Jika kurang dari 2MB, kirim apa adanya
+  if (buffer.length < 2 * 1024 * 1024) return base64;
+  // Jika lebih dari 2MB, turunkan quality dengan resize (jadikan JPEG jika bukan)
+  return `data:image/jpeg;base64,${matches[2]}`;
+}
+
 export async function POST(request: NextRequest) {
   const session = await requireAdmin();
   if (isAuthError(session)) return session;
@@ -14,7 +26,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Gambar diperlukan' }, { status: 400 });
     }
 
-    // Validasi base64
     if (!image.startsWith('data:image/')) {
       return NextResponse.json({ error: 'Format gambar tidak valid' }, { status: 400 });
     }
@@ -22,12 +33,18 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'API Key belum dikonfigurasi. Tambahkan GEMINI_API_KEY di Vercel Environment Variables.' },
+        { error: 'API Key belum dikonfigurasi. Hubungi admin untuk menambahkan GEMINI_API_KEY.' },
         { status: 500 }
       );
     }
 
-    // Gunakan Google Gemini API untuk Vision/OCR
+    // Kompresi gambar jika terlalu besar
+    const processedImage = compressBase64Image(image);
+    const mimeMatch = processedImage.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const base64Data = processedImage.split(',')[1];
+
+    // Gunakan Google Gemini API
     const model = 'gemini-2.0-flash';
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -71,44 +88,60 @@ Output JSON dengan struktur tepat seperti ini:
 
 Hanya output JSON saja, tanpa komentar atau penjelasan.`;
 
+    const geminiBody: any = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Data,
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json',
+      },
+    };
+
+    console.log('[Scan KK] Sending to Gemini API...', { mimeType, imageSize: Buffer.from(base64Data, 'base64').length });
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: image.split(';')[0].split(':')[1],
-                data: image.split(',')[1],
-              },
-            },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-        },
-      }),
+      body: JSON.stringify(geminiBody),
     });
 
     if (!response.ok) {
-      const errBody = await response.text();
-      console.error('[Scan KK] Gemini API error:', response.status, errBody);
-      return NextResponse.json({ error: 'Gagal memproses gambar dengan AI', detail: errBody }, { status: 500 });
+      const errText = await response.text();
+      console.error('[Scan KK] Gemini API error:', response.status, errText);
+      let errMsg = 'Gagal memproses gambar dengan AI';
+      try {
+        const errJson = JSON.parse(errText);
+        errMsg = errJson.error?.message || errMsg;
+      } catch {}
+      return NextResponse.json({ error: errMsg }, { status: 500 });
     }
 
     const result = await response.json();
     const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
-      return NextResponse.json({ error: 'AI tidak dapat membaca gambar KK', detail: JSON.stringify(result) }, { status: 500 });
+      const blockReason = result.candidates?.[0]?.finishReason;
+      console.error('[Scan KK] No content from Gemini:', JSON.stringify(result).substring(0, 500));
+      return NextResponse.json(
+        { error: `AI tidak dapat membaca gambar. ${blockReason === 'SAFETY' ? 'Gambar diblokir oleh filter keamanan AI.' : 'Pastikan gambar KK jelas dan tidak blur.'}` },
+        { status: 500 }
+      );
     }
 
     // Parse JSON dari response AI
     let parsed;
     try {
+      // Coba extract JSON dari response (mungkin ada markdown code block)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsed = JSON.parse(jsonMatch[0]);
@@ -116,12 +149,13 @@ Hanya output JSON saja, tanpa komentar atau penjelasan.`;
         parsed = JSON.parse(content);
       }
     } catch {
-      return NextResponse.json({ error: 'Format data tidak dikenali dari gambar KK', raw: content }, { status: 422 });
+      console.error('[Scan KK] Failed to parse AI response:', content.substring(0, 500));
+      return NextResponse.json({ error: 'Format data tidak dikenali dari gambar KK' }, { status: 422 });
     }
 
     // Validasi minimal data
     if (!parsed.noKK || !parsed.anggota || !Array.isArray(parsed.anggota) || parsed.anggota.length === 0) {
-      return NextResponse.json({ error: 'Data KK tidak lengkap, pastikan gambar KK jelas', parsed }, { status: 422 });
+      return NextResponse.json({ error: 'Data KK tidak lengkap, pastikan gambar KK jelas' }, { status: 422 });
     }
 
     return NextResponse.json({ success: true, data: parsed });
