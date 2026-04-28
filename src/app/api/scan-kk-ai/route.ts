@@ -50,6 +50,15 @@ KEMBALIKAN HANYA JSON, tanpa markdown, tanpa komentar.`;
 
 const USER_PROMPT = 'Baca Kartu Keluarga ini. Baca header (No KK, alamat, RT/RW, desa, kecamatan, kabupaten, provinsi, nama ayah, nama ibu), lalu baca tabel anggota baris per baris. Pastikan semua anggota terbaca. Kembalikan JSON saja.';
 
+// GET = endpoint debug/health check (bypass auth)
+export async function GET() {
+  return NextResponse.json({
+    status: 'scan-kk-ai-v2',
+    puterReady: true,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(request: NextRequest) {
   const session = await requireAdmin();
   if (isAuthError(session)) return session;
@@ -60,14 +69,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Gambar diperlukan' }, { status: 400 });
     }
 
+    // Puter.js token — hardcode sebagai default, env var untuk override
     const puterToken = process.env.PUTER_AUTH_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiZ3VpIiwidmVyc2lvbiI6IjAuMC4wIiwidXVpZCI6ImI0ZTJmYTQ5LTE3YTYtNGNmNi1iZmM2LTJlNjI4ZDRhMTIyMiIsInVzZXJfdWlkIjoiZDZkMzUzODMtMDQ5My00OTExLWFlODYtOWJkNDgzMmEyNzEzIiwiaWF0IjoxNzc3NDA2ODAzfQ.upFccwXCqxpJMgs-NyQFUMiK8BI4_3oI8rKlStEdS_U';
-    if (!puterToken) {
-      console.error('[Scan KK] PUTER_AUTH_TOKEN tidak ada di environment');
-      return NextResponse.json(
-        { error: 'AI tidak dikonfigurasi di server', fallback: true },
-        { status: 503 }
-      );
-    }
 
     // Pastikan gambar berupa data URL
     const imageDataUrl = image.startsWith('data:')
