@@ -23,8 +23,10 @@ export async function GET() {
       rw: string;
       keterangan: string | null;
     }>>(`
-      SELECT * FROM "PenerimaSembako" ORDER BY "namaLengkap" ASC
-    `);
+      SELECT * FROM "PenerimaSembako"
+      ${auth.rtId ? `WHERE "rtId" = $1` : ''}
+      ORDER BY "namaLengkap" ASC
+    `, ...(auth.rtId ? [auth.rtId] : []));
 
     if (penerima.length === 0) {
       return NextResponse.json({ error: 'Tidak ada data untuk diekspor' }, { status: 400 });

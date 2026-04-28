@@ -83,7 +83,7 @@ export async function GET() {
 
   // Step 5: Compare expected vs actual columns
   const expectedPendudukCols = [
-    'id', 'noKK', 'nik', 'namaLengkap', 'jenisKelamin', 'statusKeluarga',
+    'id', 'rtId', 'noKK', 'nik', 'namaLengkap', 'jenisKelamin', 'statusKeluarga',
     'tempatLahir', 'tanggalLahir', 'agama', 'pendidikan', 'pekerjaan',
     'statusPerkawinan', 'kewarganegaraan', 'namaAyah', 'namaIbu', 'namaPanggilan',
     'noHP', 'punyaKTP', 'bantuan', 'bpjs', 'desil',

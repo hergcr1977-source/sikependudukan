@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     // ======================== MATI: Hapus Penduduk ========================
     if (isMati && nik) {
-      const target = await db.penduduk.findFirst({ where: { nik: String(nik) } });
+      const target = await db.penduduk.findFirst({ where: { nik: String(nik), ...(auth.rtId ? { rtId: auth.rtId } : {}) } });
       if (!target) {
         return NextResponse.json(
           { error: `Penduduk dengan NIK ${nik} tidak ditemukan` },
@@ -121,15 +121,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru
+      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru (hanya RT sendiri)
       if (toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru) {
         const remaining = await db.penduduk.findMany({
-          where: { noKK: target.noKK, id: { not: target.id } },
+          where: { noKK: target.noKK, id: { not: target.id }, ...(auth.rtId ? { rtId: auth.rtId } : {}) },
         });
         if (remaining.length > 0) {
-          // Validasi No KK Baru tidak sudah ada di database
+          // Validasi No KK Baru tidak sudah ada di database (di RT sendiri)
           const existingNewKK = await db.penduduk.findFirst({
-            where: { noKK: String(noKKBaru) },
+            where: { noKK: String(noKKBaru), ...(auth.rtId ? { rtId: auth.rtId } : {}) },
           });
           if (existingNewKK) {
             return NextResponse.json(
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
       if (target.statusKeluarga === 'KEPALA KELUARGA') {
         const currentNoKK = toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru ? String(noKKBaru) : target.noKK;
         const remaining = await db.penduduk.findMany({
-          where: { noKK: currentNoKK, id: { not: target.id } },
+          where: { noKK: currentNoKK, id: { not: target.id }, ...(auth.rtId ? { rtId: auth.rtId } : {}) },
         });
         if (remaining.length === 0) {
           kkDissolved = true;
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
 
     // ======================== PINDAH: Hapus Penduduk ========================
     if (isPindah && nik) {
-      const target = await db.penduduk.findFirst({ where: { nik: String(nik) } });
+      const target = await db.penduduk.findFirst({ where: { nik: String(nik), ...(auth.rtId ? { rtId: auth.rtId } : {}) } });
       if (!target) {
         return NextResponse.json(
           { error: `Penduduk dengan NIK ${nik} tidak ditemukan` },
@@ -181,15 +181,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru
+      // Jika No KK berubah, update semua anggota KK yang tersisa ke No KK baru (hanya RT sendiri)
       if (toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru) {
         const remaining = await db.penduduk.findMany({
-          where: { noKK: target.noKK, id: { not: target.id } },
+          where: { noKK: target.noKK, id: { not: target.id }, ...(auth.rtId ? { rtId: auth.rtId } : {}) },
         });
         if (remaining.length > 0) {
-          // Validasi No KK Baru tidak sudah ada di database
+          // Validasi No KK Baru tidak sudah ada di database (di RT sendiri)
           const existingNewKK = await db.penduduk.findFirst({
-            where: { noKK: String(noKKBaru) },
+            where: { noKK: String(noKKBaru), ...(auth.rtId ? { rtId: auth.rtId } : {}) },
           });
           if (existingNewKK) {
             return NextResponse.json(
@@ -209,11 +209,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Jika Kepala Keluarga, cek sisa anggota (setelah update No KK jika ada)
+      // Jika Kepala Keluarga, cek sisa anggota (setelah update No KK jika ada) — PINDAH
       if (target.statusKeluarga === 'KEPALA KELUARGA') {
         const currentNoKK = toUpperCase(noKKStatus) === 'BERUBAH' && noKKBaru ? String(noKKBaru) : target.noKK;
         const remaining = await db.penduduk.findMany({
-          where: { noKK: currentNoKK, id: { not: target.id } },
+          where: { noKK: currentNoKK, id: { not: target.id }, ...(auth.rtId ? { rtId: auth.rtId } : {}) },
         });
         if (remaining.length === 0) {
           kkDissolved = true;

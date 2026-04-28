@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP } from '@/lib/utils-kependudukan';
+import { requireAuth, isAuthError } from '@/lib/auth-server';
 import * as XLSX from 'xlsx';
 
 const BULAN_NAMES = [
@@ -10,6 +11,9 @@ const BULAN_NAMES = [
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     const { searchParams } = new URL(request.url);
     const bulan = parseInt(searchParams.get('bulan') || String(new Date().getMonth() + 1));
     const tahun = parseInt(searchParams.get('tahun') || String(new Date().getFullYear()));
@@ -18,10 +22,12 @@ export async function GET(request: NextRequest) {
     const startDate = new Date(tahun, bulan - 1, 1);
     const endDate = new Date(tahun, bulan, 0, 23, 59, 59);
 
-    const allPenduduk = await db.penduduk.findMany();
-    const allSementara = await db.pendudukSementara.findMany();
+    const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
+
+    const allPenduduk = await db.penduduk.findMany({ where: whereRT });
+    const allSementara = await db.pendudukSementara.findMany({ where: whereRT });
     const kejadian = await db.kejadian.findMany({
-      where: { tanggal: { gte: startDate, lte: endDate } },
+      where: { ...whereRT, tanggal: { gte: startDate, lte: endDate } },
     });
 
     // === Age distribution calculation ===
@@ -145,7 +151,12 @@ export async function GET(request: NextRequest) {
     setCell('C3', 'DESA SUKAMAJU KECAMATAN CIBUNGBULANG KABUPATEN BOGOR');
     addMerge('C3', 'M3');
 
-    setCell('C4', `RT 001 RW 002 BULAN ${BULAN_NAMES[bulan - 1]} TAHUN ${tahun}`);
+    // Dynamic RT/RW label from user session
+    const rtLabel = auth.rtInfo
+      ? `RT ${auth.rtInfo.namaRT} RW ${auth.rtInfo.rw}`
+      : 'SEMUA RT';
+
+    setCell('C4', `${rtLabel} BULAN ${BULAN_NAMES[bulan - 1]} TAHUN ${tahun}`);
     addMerge('C4', 'M4');
 
     // Row 5: empty gap

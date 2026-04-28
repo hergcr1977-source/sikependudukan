@@ -50,15 +50,8 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
   });
   const [authLoading, setAuthLoading] = useState(false);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  useEffect(() => {
-    if (auth.authenticated && activeTab) {
-      checkAuth();
-    }
-  }, [activeTab]);
+  // Auth sudah tersedia dari server-side props (JWT cookie).
+  // Tidak perlu fetch ulang setiap ganti tab — itu bikin loading lama.
 
   const checkAuth = async () => {
     try {

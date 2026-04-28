@@ -211,13 +211,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fast upsert: Delete existing + Bulk insert
+    // Fast upsert: Delete existing (only in THIS RT) + Bulk insert
     const niks = allRecords.map(r => r.nik);
     const nikPlaceholders = niks.map((_, i) => `$${i + 1}`).join(',');
+    const importRtId = auth.rtId || 1;
 
     await db.$executeRawUnsafe(
-      `DELETE FROM "PendudukSementara" WHERE "nik" IN (${nikPlaceholders})`,
-      ...niks
+      `DELETE FROM "PendudukSementara" WHERE "nik" IN (${nikPlaceholders}) AND "rtId" = $${niks.length + 1}`,
+      ...niks, importRtId
     );
 
     const BATCH_SIZE = 100;
@@ -226,6 +227,7 @@ export async function POST(request: NextRequest) {
       const batch = allRecords.slice(i, i + BATCH_SIZE);
       await db.pendudukSementara.createMany({
         data: batch.map(r => ({
+          rtId: importRtId,
           noKK: r.noKK, nik: r.nik, namaLengkap: r.namaLengkap, jenisKelamin: r.jenisKelamin,
           statusKeluarga: r.statusKeluarga, tempatLahir: r.tempatLahir, tanggalLahir: new Date(r.tanggalLahir),
           agama: r.agama, pendidikan: r.pendidikan, pekerjaan: r.pekerjaan, statusPerkawinan: r.statusPerkawinan,
@@ -233,9 +235,12 @@ export async function POST(request: NextRequest) {
           namaPanggilan: r.namaPanggilan, noHP: null,
           statusKeterangan: r.statusKeterangan, alamatAsal: r.alamatAsal,
           bantuan: '[]', bpjs: null,
-          alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
-          kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
-          kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
+          alamat: auth.rtInfo?.alamat || ALAMAT_DEFAULT,
+          rt: auth.rtInfo?.namaRT || RT_DEFAULT, rw: auth.rtInfo?.rw || RW_DEFAULT,
+          kelurahan: auth.rtInfo?.kelurahan || KELURAHAN_DEFAULT,
+          kecamatan: auth.rtInfo?.kecamatan || KECAMATAN_DEFAULT,
+          kabupaten: auth.rtInfo?.kabupaten || KABUPATEN_DEFAULT,
+          provinsi: auth.rtInfo?.provinsi || PROVINSI_DEFAULT,
           tanggalMasuk: nowDate, tanggalKeluar: null,
           keterangan: r.keterangan,
         })),

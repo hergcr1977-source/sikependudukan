@@ -5,22 +5,26 @@ import { requireAdmin, isAuthError } from '@/lib/auth-server';
 // PUT - update data kas
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
-    const id = params.id;
+    const { id } = await params;
     const body = await request.json();
     const { tanggal, jenis, jumlah, keterangan } = body;
 
-    // Cek data ada
+    // Cek data ada + verify ownership
     const existing = await db.$queryRawUnsafe(
       `SELECT * FROM "KasRT" WHERE "id" = $1`,
       Number(id)
     );
     if (!existing || (existing as any[]).length === 0) {
       return NextResponse.json({ error: 'Data kas tidak ditemukan' }, { status: 404 });
+    }
+    const record = (existing as any[])[0];
+    if (auth.rtId && record.rtId !== auth.rtId && auth.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     // Bangun query UPDATE dinamis
@@ -65,20 +69,24 @@ export async function PUT(
 // DELETE - hapus data kas
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
-    const id = params.id;
+    const { id } = await params;
 
-    // Cek data ada
+    // Cek data ada + verify ownership
     const existing = await db.$queryRawUnsafe(
       `SELECT * FROM "KasRT" WHERE "id" = $1`,
       Number(id)
     );
     if (!existing || (existing as any[]).length === 0) {
       return NextResponse.json({ error: 'Data kas tidak ditemukan' }, { status: 404 });
+    }
+    const record = (existing as any[])[0];
+    if (auth.rtId && record.rtId !== auth.rtId && auth.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     await db.$executeRawUnsafe(`DELETE FROM "KasRT" WHERE "id" = $1`, Number(id));

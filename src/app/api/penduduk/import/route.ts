@@ -192,14 +192,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ===== STEP 3: Fast upsert - Delete existing + Bulk insert =====
+    // ===== STEP 3: Fast upsert - Delete existing (only in THIS RT) + Bulk insert =====
     const niks = allRecords.map(r => r[1]);
     const nikPlaceholders = niks.map((_, i) => `$${i + 1}`).join(',');
-    
-    // Delete existing records with matching NIKs
+    const importRtId = auth.rtId || 1;
+
+    // Delete existing records with matching NIKs ONLY in the same RT
     await db.$executeRawUnsafe(
-      `DELETE FROM "Penduduk" WHERE "nik" IN (${nikPlaceholders})`,
-      ...niks
+      `DELETE FROM "Penduduk" WHERE "nik" IN (${nikPlaceholders}) AND "rtId" = $${niks.length + 1}`,
+      ...niks, importRtId
     );
 
     // Bulk insert all records using Prisma createMany
@@ -210,15 +211,19 @@ export async function POST(request: NextRequest) {
       const batch = allRecords.slice(i, i + BATCH_SIZE);
       await db.penduduk.createMany({
         data: batch.map(r => ({
+          rtId: importRtId,
           noKK: r[0], nik: r[1], namaLengkap: r[2], jenisKelamin: r[3],
           statusKeluarga: r[4], tempatLahir: r[5], tanggalLahir: new Date(r[6]),
           agama: r[7], pendidikan: r[8], pekerjaan: r[9], statusPerkawinan: r[10],
           kewarganegaraan: r[11], namaAyah: r[12], namaIbu: r[13],
           namaPanggilan: r[14], noHP: null, punyaKTP: 'BELUM', bantuan: '[]',
           bpjs: null, desil: null,
-          alamat: ALAMAT_DEFAULT, rt: RT_DEFAULT, rw: RW_DEFAULT,
-          kelurahan: KELURAHAN_DEFAULT, kecamatan: KECAMATAN_DEFAULT,
-          kabupaten: KABUPATEN_DEFAULT, provinsi: PROVINSI_DEFAULT,
+          alamat: auth.rtInfo?.alamat || ALAMAT_DEFAULT,
+          rt: auth.rtInfo?.namaRT || RT_DEFAULT, rw: auth.rtInfo?.rw || RW_DEFAULT,
+          kelurahan: auth.rtInfo?.kelurahan || KELURAHAN_DEFAULT,
+          kecamatan: auth.rtInfo?.kecamatan || KECAMATAN_DEFAULT,
+          kabupaten: auth.rtInfo?.kabupaten || KABUPATEN_DEFAULT,
+          provinsi: auth.rtInfo?.provinsi || PROVINSI_DEFAULT,
           keterangan: r[15],
         })),
         skipDuplicates: true,

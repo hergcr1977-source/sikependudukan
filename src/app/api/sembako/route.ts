@@ -5,8 +5,10 @@ import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
-// Helper: ensure PenerimaSembako table exists (auto-create if missing)
+// Helper: ensure PenerimaSembako table exists (auto-create if missing, one-time per instance)
+let _sembakoTableEnsured = false;
 async function ensureTable() {
+  if (_sembakoTableEnsured) return;
   try {
     await db.$queryRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "PenerimaSembako" (
@@ -33,6 +35,7 @@ async function ensureTable() {
       console.error('Failed to create PenerimaSembako table:', msg);
     }
   }
+  _sembakoTableEnsured = true;
 }
 
 export async function GET(request: NextRequest) {

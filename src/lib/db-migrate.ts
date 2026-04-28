@@ -1,49 +1,66 @@
 /**
- * Database migration: ensure rtId columns exist in all data tables.
- * Must be called from EVERY API route that queries data tables.
+ * Database migration: one-time migration runner.
+ * Uses global flags so migrations only run ONCE per serverless instance,
+ * NOT on every request. This fixes the slow loading issue.
  */
 import { db } from '@/lib/db';
 
+// Global flags — migration hanya jalan sekali per server instance (cold start)
+let _migrationsDone = false;
+let _migrationPromise: Promise<void> | null = null;
+
 export async function ensureRtIdColumns() {
-  const tables = [
-    'Penduduk', 'PendudukSementara', 'Kejadian',
-    'LaporanBulanan', 'KasRT', 'PenerimaSembako', 'SembakoSnapshot'
-  ];
+  if (_migrationsDone) return;
+  if (_migrationPromise) return _migrationPromise;
 
-  for (const table of tables) {
-    try {
-      // Check if table exists
-      const tableCheck = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
-        `SELECT table_name FROM information_schema.tables WHERE table_name = $1`,
-        table.toLowerCase()
-      );
-      if (!tableCheck.length) continue;
+  _migrationPromise = _runRtIdMigration();
+  return _migrationPromise;
+}
 
-      // Check if rtId column exists
-      const colCheck = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
-        `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = 'rtid'`,
-        table.toLowerCase()
-      );
+async function _runRtIdMigration() {
+  try {
+    const tables = [
+      'Penduduk', 'PendudukSementara', 'Kejadian',
+      'LaporanBulanan', 'KasRT', 'PenerimaSembako', 'SembakoSnapshot'
+    ];
 
-      if (!colCheck.length) {
-        // Add rtId column - existing data automatically gets rtId=1 (RT.001)
-        // NOT NULL DEFAULT 1 means NO existing data is touched or deleted
+    // Batch check: satu query untuk cek semua kolom sekaligus
+    const existingCols = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
+      `SELECT table_name FROM information_schema.columns
+       WHERE column_name = 'rtid'
+       AND table_name IN (${tables.map(t => `'${t.toLowerCase()}'`).join(',')})`
+    );
+    const existingSet = new Set(existingCols.map(r => r.table_name));
+
+    for (const table of tables) {
+      if (existingSet.has(table.toLowerCase())) continue;
+
+      try {
         await db.$executeRawUnsafe(
-          `ALTER TABLE "${table}" ADD COLUMN "rtId" INTEGER NOT NULL DEFAULT 1`
+          `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "rtId" INTEGER NOT NULL DEFAULT 1`
         );
-        console.log(`[migrate] Added rtId column to ${table} (existing data preserved with rtId=1)`);
-      }
-    } catch (e) {
-      // Column might already exist from concurrent request - that's OK
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes('already exists') && !msg.includes('duplicate')) {
-        console.log(`[migrate] ${table}:`, msg.substring(0, 200));
+        console.log(`[migrate] Added rtId column to ${table}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes('already exists') && !msg.includes('duplicate')) {
+          console.log(`[migrate] ${table}:`, msg.substring(0, 200));
+        }
       }
     }
+  } finally {
+    _migrationsDone = true;
   }
 }
 
 export async function ensureAuthTables() {
+  if (_migrationsDone) return;
+  if (_migrationPromise) return _migrationPromise;
+
+  _migrationPromise = _runAuthMigration();
+  return _migrationPromise;
+}
+
+async function _runAuthMigration() {
   try {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "RukunTetangga" (
@@ -78,54 +95,82 @@ export async function ensureAuthTables() {
     console.log('[migrate] Auth tables:', e);
   }
 
-  // Seed RT.001 RW.002
-  const existingRT = await db.$queryRawUnsafe<Array<{ id: number }>>(
-    `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
-  );
-  let rt001Id = existingRT[0]?.id;
-  if (!rt001Id) {
-    await db.$executeRawUnsafe(`
-      INSERT INTO "RukunTetangga" ("namaRT", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi", "alamat", "ketuaRT", "aktif")
-      VALUES ('001', '002', 'SUKAMAJU', 'CIBUNGBULANG', 'BOGOR', 'JAWA BARAT', 'KP. CEMPLANG', 'HERMAN GOZALI', true)
-    `);
-    const inserted = await db.$queryRawUnsafe<Array<{ id: number }>>(
+  try {
+    // Seed RT.001 RW.002
+    const existingRT = await db.$queryRawUnsafe<Array<{ id: number }>>(
       `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
     );
-    rt001Id = inserted[0]?.id;
-  }
-
-  // Seed herman user
-  const existingHerman = await db.$queryRawUnsafe<Array<{ id: number }>>(
-    `SELECT id FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
-  );
-  if (!existingHerman.length && rt001Id) {
-    await db.$executeRawUnsafe(`
-      INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
-      VALUES ('herman', 'H3rm4n77', 'HERMAN GOZALI', 'admin', ${rt001Id}, true)
-    `);
-  }
-
-  // If herman exists but has no rtId, update it
-  if (existingHerman.length && rt001Id) {
-    const hermanData = await db.$queryRawUnsafe<Array<{ rtId: number | null }>>(
-      `SELECT "rtId" FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
-    );
-    if (hermanData.length && hermanData[0].rtId === null) {
-      await db.$executeRawUnsafe(
-        `UPDATE "AppUser" SET "rtId" = $1 WHERE "username" = 'herman'`,
-        rt001Id
+    let rt001Id = existingRT[0]?.id;
+    if (!rt001Id) {
+      await db.$executeRawUnsafe(`
+        INSERT INTO "RukunTetangga" ("namaRT", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi", "alamat", "ketuaRT", "aktif")
+        VALUES ('001', '002', 'SUKAMAJU', 'CIBUNGBULANG', 'BOGOR', 'JAWA BARAT', 'KP. CEMPLANG', 'HERMAN GOZALI', true)
+      `);
+      const inserted = await db.$queryRawUnsafe<Array<{ id: number }>>(
+        `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
       );
+      rt001Id = inserted[0]?.id;
     }
-  }
 
-  // Seed superadmin
-  const existingSA = await db.$queryRawUnsafe<Array<{ id: number }>>(
-    `SELECT id FROM "AppUser" WHERE "username" = 'superadmin' LIMIT 1`
-  );
-  if (!existingSA.length) {
-    await db.$executeRawUnsafe(`
-      INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
-      VALUES ('superadmin', 'SuperAdmin123!', 'SUPER ADMIN', 'superadmin', NULL, true)
-    `);
+    // Seed herman user
+    const existingHerman = await db.$queryRawUnsafe<Array<{ id: number }>>(
+      `SELECT id FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
+    );
+    if (!existingHerman.length && rt001Id) {
+      await db.$executeRawUnsafe(`
+        INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
+        VALUES ('herman', 'H3rm4n77', 'HERMAN GOZALI', 'admin', ${rt001Id}, true)
+      `);
+    }
+
+    // If herman exists but has no rtId, update it
+    if (existingHerman.length && rt001Id) {
+      const hermanData = await db.$queryRawUnsafe<Array<{ rtId: number | null }>>(
+        `SELECT "rtId" FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
+      );
+      if (hermanData.length && hermanData[0].rtId === null) {
+        await db.$executeRawUnsafe(
+          `UPDATE "AppUser" SET "rtId" = $1 WHERE "username" = 'herman'`,
+          rt001Id
+        );
+      }
+    }
+
+    // Seed superadmin
+    const existingSA = await db.$queryRawUnsafe<Array<{ id: number }>>(
+      `SELECT id FROM "AppUser" WHERE "username" = 'superadmin' LIMIT 1`
+    );
+    if (!existingSA.length) {
+      await db.$executeRawUnsafe(`
+        INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
+        VALUES ('superadmin', 'SuperAdmin123!', 'SUPER ADMIN', 'superadmin', NULL, true)
+      `);
+    }
+  } finally {
+    _migrationsDone = true;
   }
+}
+
+/**
+ * Run all migrations once — call this once at startup or first API call.
+ * Combines both auth tables and rtId columns into a single operation.
+ */
+export async function runMigrationsOnce() {
+  if (_migrationsDone) return;
+  if (_migrationPromise) return _migrationPromise;
+
+  _migrationPromise = (async () => {
+    try {
+      await _runAuthMigration();
+    } catch (e) {
+      console.error('[migrate] Auth migration error:', e);
+    }
+    try {
+      await _runRtIdMigration();
+    } catch (e) {
+      console.error('[migrate] rtId migration error:', e);
+    }
+  })();
+
+  return _migrationPromise;
 }

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
-// Helper: pastikan tabel KasRT ada, jika belum buat otomatis
+// Helper: pastikan tabel KasRT ada, jika belum buat otomatis (one-time per instance)
+let _kasTableEnsured = false;
 async function ensureTable() {
+  if (_kasTableEnsured) return;
   try {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "KasRT" (
@@ -17,7 +19,9 @@ async function ensureTable() {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    _kasTableEnsured = true;
   } catch (e) {
+    _kasTableEnsured = true;
     console.error('ensureTable error:', e);
   }
 }

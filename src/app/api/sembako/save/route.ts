@@ -5,12 +5,15 @@ import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
-// Helper: ensure SembakoSnapshot table exists (auto-create if missing)
+// Helper: ensure SembakoSnapshot table exists (auto-create if missing, one-time per instance)
+let _snapshotTableEnsured = false;
 async function ensureTable() {
+  if (_snapshotTableEnsured) return;
   try {
     await db.$queryRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "SembakoSnapshot" (
         "id" SERIAL PRIMARY KEY,
+        "rtId" INTEGER NOT NULL DEFAULT 1,
         "nama" TEXT NOT NULL,
         "jumlahPenerima" INTEGER NOT NULL DEFAULT 0,
         "data" TEXT NOT NULL DEFAULT '[]',
@@ -24,9 +27,25 @@ async function ensureTable() {
       console.error('Failed to create SembakoSnapshot table:', msg);
     }
   }
+
+  // Pastikan kolom rtId ada (untuk tabel yang sudah ada sebelumnya)
+  try {
+    const cols = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'sembakosnapshot' AND column_name = 'rtid'`
+    );
+    if (!cols.length) {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "SembakoSnapshot" ADD COLUMN IF NOT EXISTS "rtId" INTEGER NOT NULL DEFAULT 1`
+      );
+    }
+  } catch (e) {
+    console.error('Failed to add rtId to SembakoSnapshot:', e);
+  }
+
+  _snapshotTableEnsured = true;
 }
 
-// GET /api/sembako/save - list all saved snapshots (or single with ?id=X&detail=true)
+// GET /api/sembako/save - list all saved snapshots (filtered by rtId for admin, all for superadmin)
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth();
@@ -50,6 +69,7 @@ export async function GET(request: NextRequest) {
       try { parsedData = JSON.parse(snapshot.data); } catch { /* ignore */ }
       return NextResponse.json({
         id: snapshot.id,
+        rtId: snapshot.rtId,
         nama: snapshot.nama,
         jumlahPenerima: snapshot.jumlahPenerima,
         data: parsedData,
@@ -58,12 +78,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Filter by rtId: admin hanya lihat snapshot milik RT sendiri, superadmin lihat semua
+    const where: Record<string, unknown> = {};
+    if (auth.rtId) where.rtId = auth.rtId;
+
     const snapshots = await db.sembakoSnapshot.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     });
 
     const result = snapshots.map(s => ({
       id: s.id,
+      rtId: s.rtId,
       nama: s.nama,
       jumlahPenerima: s.jumlahPenerima,
       createdAt: s.createdAt,
@@ -94,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     const snapshot = await db.sembakoSnapshot.create({
       data: {
+        rtId: auth.rtId || 1,
         nama,
         jumlahPenerima: data.length,
         data: JSON.stringify(data),
@@ -104,6 +131,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       id: snapshot.id,
+      rtId: snapshot.rtId,
       message: `Data "${nama}" berhasil disimpan (${data.length} penerima)`,
     });
   } catch (error) {
@@ -126,10 +154,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID tidak valid' }, { status: 400 });
     }
 
-    // Get snapshot name for response
+    // Get snapshot for response + ownership check
     const snapshot = await db.sembakoSnapshot.findUnique({ where: { id } });
     if (!snapshot) {
       return NextResponse.json({ error: 'Data tersimpan tidak ditemukan' }, { status: 404 });
+    }
+
+    // Verify ownership: admin hanya bisa hapus snapshot milik RT sendiri
+    if (auth.rtId && snapshot.rtId !== auth.rtId && auth.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     await db.sembakoSnapshot.delete({ where: { id } });

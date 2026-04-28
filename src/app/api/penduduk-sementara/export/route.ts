@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { formatTanggal } from '@/lib/utils-kependudukan';
+import { requireAdmin, isAuthError } from '@/lib/auth-server';
 import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
+
+    const where: Record<string, unknown> = {};
+    if (auth.rtId) where.rtId = auth.rtId;
+
     const penduduk = await db.pendudukSementara.findMany({
+      where,
       orderBy: [{ noKK: 'asc' }, { statusKeluarga: 'asc' }],
     });
 
@@ -15,7 +23,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Tidak ada data untuk diekspor' }, { status: 400 });
     }
 
-    // Header sesuai format import sementara (ada tambahan STATUS WARGA)
     const headers = [
       'NO. KK', 'NAMA', 'NIK', 'JK', 'STATUS KK',
       'TEMPAT', 'TGL LAHIR', 'AGAMA', 'PENDIDIKAN', 'PEKERJAAN',
@@ -46,23 +53,10 @@ export async function GET() {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
     ws['!cols'] = [
-      { wch: 20 }, // NO. KK
-      { wch: 25 }, // NAMA
-      { wch: 20 }, // NIK
-      { wch: 5 },  // JK
-      { wch: 20 }, // STATUS KK
-      { wch: 15 }, // TEMPAT
-      { wch: 14 }, // TGL LAHIR
-      { wch: 10 }, // AGAMA
-      { wch: 25 }, // PENDIDIKAN
-      { wch: 25 }, // PEKERJAAN
-      { wch: 18 }, // STATUS KAWIN
-      { wch: 15 }, // WARGANEGARAAN
-      { wch: 18 }, // STATUS WARGA
-      { wch: 25 }, // AYAH
-      { wch: 25 }, // IBU
-      { wch: 15 }, // PANGGILAN
-      { wch: 25 }, // KETERANGAN
+      { wch: 20 }, { wch: 25 }, { wch: 20 }, { wch: 5 },  { wch: 20 },
+      { wch: 15 }, { wch: 14 }, { wch: 10 }, { wch: 25 }, { wch: 25 },
+      { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 25 }, { wch: 25 },
+      { wch: 15 }, { wch: 25 },
     ];
 
     const wb = XLSX.utils.book_new();
