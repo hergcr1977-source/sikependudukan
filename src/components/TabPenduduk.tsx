@@ -423,8 +423,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         pekerjaan: kepala?.pekerjaan || '',
         statusPerkawinan: kepala?.statusPerkawinan || '',
         kewarganegaraan: kepala?.kewarganegaraan || 'WNI',
-        namaAyah: '',
-        namaIbu: '',
+        namaAyah: kepala?.namaAyah || parsedData.namaAyah || '',
+        namaIbu: kepala?.namaIbu || parsedData.namaIbu || '',
         namaPanggilan: '',
         noHP: '',
         punyaKTP: kepala?.tanggalLahir && hitungUmur(kepala.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
@@ -456,8 +456,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         pekerjaan: a.pekerjaan || '',
         statusPerkawinan: a.statusPerkawinan || '',
         kewarganegaraan: a.kewarganegaraan || 'WNI',
-        namaAyah: '',
-        namaIbu: '',
+        namaAyah: a.namaAyah || parsedData.namaAyah || '',
+        namaIbu: a.namaIbu || parsedData.namaIbu || '',
         namaPanggilan: '',
         noHP: '',
         punyaKTP: a.tanggalLahir && hitungUmur(a.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
@@ -1867,6 +1867,25 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
                                 className="text-sm"
                                 value={anggota.noHP}
                                 onChange={e => updateAnggotaField(idx, 'noHP', e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Nama Ayah</Label>
+                              <Input
+                                className="text-sm uppercase"
+                                value={anggota.namaAyah}
+                                onChange={e => updateAnggotaField(idx, 'namaAyah', e.target.value.toUpperCase())}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Nama Ibu</Label>
+                              <Input
+                                className="text-sm uppercase"
+                                value={anggota.namaIbu}
+                                onChange={e => updateAnggotaField(idx, 'namaIbu', e.target.value.toUpperCase())}
                               />
                             </div>
                           </div>

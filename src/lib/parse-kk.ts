@@ -1,6 +1,7 @@
 // ============================================================
 // parse-kk.ts — Parser OCR Kartu Keluarga (client-side)
-// Mendukung Tesseract.js output yang berantakan/bercampur kolom
+// Menggunakan sequential column parsing: setelah NIK, field
+// di-parse berurutan sesuai urutan kolom di KK asli.
 // ============================================================
 
 interface KKMember {
@@ -15,6 +16,8 @@ interface KKMember {
   statusPerkawinan: string;
   statusKeluarga: string;
   kewarganegaraan: string;
+  namaAyah: string;
+  namaIbu: string;
 }
 
 interface KKParseResult {
@@ -27,12 +30,14 @@ interface KKParseResult {
   kabupaten: string;
   provinsi: string;
   namaKepala: string;
+  namaAyah: string;
+  namaIbu: string;
   anggota: KKMember[];
-  rawText: string; // untuk debug/review
+  rawText: string;
 }
 
 // ============================================================
-// Pilihan nilai yang valid (dari constants.ts)
+// Nilai valid untuk fuzzy matching
 // ============================================================
 const AGAMA_VALUES = ['ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'KONGHUCU', 'KATOLIK', 'LAINNYA'];
 const PENDIDIKAN_VALUES = [
@@ -52,14 +57,32 @@ const STATUS_KAWIN_VALUES = ['BELUM MENIKAH', 'KAWIN', 'CERAI HIDUP', 'CERAI MAT
 const STATUS_KELUARGA_VALUES = ['KEPALA KELUARGA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU', 'LAINNYA'];
 
 // ============================================================
-// Preprocessing gambar untuk OCR yang lebih akurat
+// Keyword yang menandakan akhir dari nama (bukan bagian nama)
+// ============================================================
+const NAME_STOP_WORDS = new Set([
+  'LAKI-LAKI', 'LAKI', 'PEREMPUAN', 'P',
+  'ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'KONGHUCU', 'KATOLIK',
+  'SMA', 'SMP', 'SD', 'SLTA', 'SLTP', 'SEDERAJAT', 'SLB',
+  'PELAJAR', 'MAHASISWA', 'PNS', 'SOPIR', 'PEDAGANG', 'BURUH',
+  'WIRASWASTA', 'PEGAWAI', 'KARYAWAN', 'TNI', 'POLRI', 'PETANI',
+  'MENGURUS', 'RUMAH', 'TANGGA', 'BELUM', 'TIDAK', 'BEKERJA',
+  'KAWIN', 'CERAI', 'MENIKAH', 'WNI', 'WNA',
+  'KEPALA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU',
+  'D1', 'D2', 'D3', 'S1', 'S2', 'S3',
+  'PAKET', 'DIPLOMA', 'SARJANA', 'PASCA',
+  'USTADZ', 'MUBALIGH', 'NEGERI', 'ASN', 'HARIAN', 'LEPAS',
+  'PEKEBUN', 'KETENAGAKERJAAN',
+]);
+
+// ============================================================
+// Preprocessing gambar untuk OCR
 // ============================================================
 export function preprocessImageForOCR(dataUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      const scale = Math.max(1, 2000 / Math.max(img.width, img.height)); // upscale jika kurang dari 2000px
+      const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
 
@@ -69,7 +92,7 @@ export function preprocessImageForOCR(dataUrl: string): Promise<string> {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      // Step 1: Grayscale
+      // Grayscale
       for (let i = 0; i < data.length; i += 4) {
         const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
         data[i] = gray;
@@ -77,7 +100,7 @@ export function preprocessImageForOCR(dataUrl: string): Promise<string> {
         data[i + 2] = gray;
       }
 
-      // Step 2: Contrast enhancement
+      // Contrast enhancement
       const contrast = 1.8;
       const brightness = -10;
       for (let i = 0; i < data.length; i += 4) {
@@ -88,7 +111,7 @@ export function preprocessImageForOCR(dataUrl: string): Promise<string> {
         data[i + 2] = data[i];
       }
 
-      // Step 3: Binary threshold (Otsu-like, di tengah)
+      // Binary threshold
       const threshold = 130;
       for (let i = 0; i < data.length; i += 4) {
         const bw = data[i] > threshold ? 255 : 0;
@@ -122,53 +145,48 @@ export function parseKKFromOCR(rawText: string): KKParseResult | null {
     kabupaten: '',
     provinsi: '',
     namaKepala: '',
+    namaAyah: '',
+    namaIbu: '',
     anggota: [],
-    rawText: text.substring(0, 2000),
+    rawText: text.substring(0, 3000),
   };
 
-  // ============================================================
   // 1. Cari No. KK
-  // ============================================================
   result.noKK = extractNoKK(text);
   if (!result.noKK) return null;
 
-  // ============================================================
   // 2. Cari Nama Kepala Keluarga
-  // ============================================================
   result.namaKepala = extractNamaKepala(text, lines);
 
-  // ============================================================
-  // 3. Cari Alamat
-  // ============================================================
+  // 3. Cari Nama Ayah & Nama Ibu (header KK)
+  const ayahIbu = extractNamaAyahIbu(text, lines);
+  result.namaAyah = ayahIbu.ayah;
+  result.namaIbu = ayahIbu.ibu;
+
+  // 4. Cari Alamat + RT/RW
   const alamatInfo = extractAlamat(lines);
   result.alamat = alamatInfo.alamat;
   result.rt = alamatInfo.rt;
   result.rw = alamatInfo.rw;
 
-  // ============================================================
-  // 4. Cari Desa, Kecamatan, Kabupaten, Provinsi
-  // ============================================================
+  // 5. Cari Desa, Kecamatan, Kabupaten, Provinsi
   result.desa = extractFieldValue(lines, ['KELURAHAN', 'KEL/DESA', 'KEL\\/DESA', 'DESA/KELURAHAN', 'DESA', 'KEL DESA', 'KEL/ DESA', 'KEL./ DESA', 'KEL./DESA', 'KEL/DESA', 'KEL. DESA', 'KEL.DESA']);
   result.kecamatan = extractFieldValue(lines, ['KECAMATAN', 'KEC.', 'KEC']);
   result.kabupaten = extractFieldValue(lines, ['KABUPATEN/KOTA', 'KABUPATEN', 'KABUPATEN/ KOTA', 'KAB.', 'KABUPATEN / KOTA', 'KAB / KOTA']);
   result.provinsi = extractFieldValue(lines, ['PROVINSI', 'PROV.', 'PROV']);
 
-  // ============================================================
-  // 5. Cari dan parse anggota keluarga
-  // ============================================================
+  // 6. Cari anggota keluarga (sequential parsing)
   result.anggota = extractAllMembers(text, lines);
 
   return result;
 }
 
 // ============================================================
-// Helper: Extract No. KK (16 digit pertama setelah label "KK")
+// Helper: Extract No. KK
 // ============================================================
 function extractNoKK(text: string): string {
-  // Normalisasi: hapus spasi dalam angka berurutan
   const normalized = text.replace(/(\d)\s+(\d)/g, '$1$2');
 
-  // Cari setelah "NO KK", "NO. KK", "NOMOR KK"
   const kkPatterns = [
     /NO\s*[.\s]*KK\s*[:\s\-]*\[?\s*(\d{16})\s*\]?/i,
     /N0\s*[.\s]*KK\s*[:\s\-]*\[?\s*(\d{16})\s*\]?/i,
@@ -179,12 +197,9 @@ function extractNoKK(text: string): string {
     if (m) return m[1];
   }
 
-  // Fallback: cari 16 digit pertama yang bukan tanggal
+  // Fallback: 16 digit pertama
   const all16 = normalized.match(/\d{16}/g);
-  if (all16 && all16.length > 0) {
-    return all16[0];
-  }
-
+  if (all16 && all16.length > 0) return all16[0];
   return '';
 }
 
@@ -204,6 +219,61 @@ function extractNamaKepala(text: string, lines: string[]): string {
 }
 
 // ============================================================
+// Helper: Extract Nama Ayah & Nama Ibu dari header KK
+// ============================================================
+function extractNamaAyahIbu(text: string, lines: string[]): { ayah: string; ibu: string } {
+  let ayah = '';
+  let ibu = '';
+
+  for (const line of lines) {
+    // Pattern: "NAMA AYAH : JOKO" atau "NAMA AYAH JOKO"
+    if (!ayah) {
+      const mAyah = line.match(/NAMA\s*AYAH\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
+      if (mAyah && mAyah[1].trim().length > 2) {
+        ayah = mAyah[1].trim();
+        // Bersihkan dari suffix yang bukan nama
+        ayah = cleanName(ayah);
+      }
+    }
+
+    if (!ibu) {
+      const mIbu = line.match(/NAMA\s*IBU\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
+      if (mIbu && mIbu[1].trim().length > 2) {
+        ibu = mIbu[1].trim();
+        ibu = cleanName(ibu);
+      }
+    }
+
+    if (ayah && ibu) break;
+  }
+
+  return { ayah, ibu };
+}
+
+// ============================================================
+// Helper: Bersihkan nama dari suffix bukan nama
+// ============================================================
+function cleanName(nama: string): string {
+  // Hapus suffix setelah keyword yang jelas bukan nama
+  const stopPatterns = [
+    /\s+(LAKI[- ]?LAKI|PEREMPUAN)\s*.*$/i,
+    /\s+(ISLAM|KRISTEN|BUDHA|HINDU|KONGHUCU|KATOLIK)\s*.*$/i,
+    /\s+\d{2}[\-\/\.]\d{2}[\-\/\.]\d{4}.*$/,
+    /\s+(KAWIN|CERAI|BELUM\s*MENIKAH|BELUM\s*KAWIN).*$/i,
+    /\s+(WNI|WNA)\s*.*$/,
+    /\s+(KEPALA\s*KELUARGA|ISTRI|ANAK|MERTUA|MENANTU|CUCU)\s*.*$/i,
+    /\s+(PELAJAR|PNS|SOPIR|PEDAGANG|BURUH|WIRASWASTA|PEGAWAI|KARYAWAN|PETANI|MENGURUS).*$/i,
+    /\s+(SMA|SMP|SD|SLTA|SLTP|SEDERAJAT|D1|D2|D3|S1|S2|S3|PAKET|DIPLOMA|SARJANA|PASCA).*$/i,
+  ];
+
+  for (const pat of stopPatterns) {
+    nama = nama.replace(pat, '').trim();
+  }
+
+  return nama;
+}
+
+// ============================================================
 // Helper: Extract Alamat + RT/RW
 // ============================================================
 function extractAlamat(lines: string[]): { alamat: string; rt: string; rw: string } {
@@ -212,16 +282,11 @@ function extractAlamat(lines: string[]): { alamat: string; rt: string; rw: strin
   let rw = '';
 
   for (let i = 0; i < lines.length; i++) {
-    // Cari baris "ALAMAT"
     if (/^ALAMAT/i.test(lines[i])) {
       alamat = lines[i].replace(/^ALAMAT\s*[:\s\-]*/i, '').trim();
-
-      // Jika alamat kosong, ambil baris berikutnya
       if (!alamat && i + 1 < lines.length) {
         alamat = lines[i + 1].trim();
       }
-
-      // Cari RT/RW di baris alamat atau baris berikutnya
       for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
         const rtRwMatch = lines[j].match(/(\d{3})\s*[\/\\]\s*(\d{3})/);
         if (rtRwMatch) {
@@ -247,7 +312,6 @@ function extractFieldValue(lines: string[], keywords: string[]): string {
       const m = lines[i].match(regex);
       if (m) {
         let val = m[1].trim();
-        // Bersihkan dari suffix seperti ", KODE POS 16630"
         val = val.replace(/,\s*KODE\s*POS\s*\d{5}.*/i, '').trim();
         return val;
       }
@@ -261,43 +325,38 @@ function escapeRegex(str: string): string {
 }
 
 // ============================================================
-// Helper: Cari semua anggota keluarga
+// Helper: Cari semua anggota keluarga — Sequential Parsing
 // ============================================================
 function extractAllMembers(fullText: string, lines: string[]): KKMember[] {
-  // Normalisasi teks: hapus spasi di dalam angka berurutan (bukan tanggal)
-  const normalized = fullText
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+  const normalized = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalizedNoSpaces = normalized.replace(/(\d)\s+(\d)/g, '$1$2');
 
   const members: KKMember[] = [];
   const usedNiks = new Set<string>();
 
-  // Cari semua NIK (16 digit) — normalisasi dulu
-  const normalizedNoSpaces = normalized.replace(/(\d)\s+(\d)/g, '$1$2');
-
-  // Cari pattern NIK: 16 digit yang bukan bagian dari tanggal
-  // Tanggal biasanya format DD-MM-YYYY, NIK format 16 digit tanpa pemisah
+  // Cari semua NIK (16 digit)
   const nikMatches: { nik: string; startIdx: number }[] = [];
   const nikRegex = /\b(\d{16})\b/g;
   let match;
   while ((match = nikRegex.exec(normalizedNoSpaces)) !== null) {
-    const nik = match[1];
-    // Skip jika ini adalah No. KK (sudah dipakai sebagai header)
-    // Kita biarkan semua NIK terdeteksi, nanti difilter
-    nikMatches.push({ nik, startIdx: match.index });
+    nikMatches.push({ nik: match[1], startIdx: match.index });
   }
 
   if (nikMatches.length === 0) return members;
 
-  // Ambil teks di sekitar setiap NIK (±200 karakter) untuk parsing per-anggota
-  for (const nikInfo of nikMatches) {
+  // Untuk setiap NIK, ambil teks DARI NIK tersebut SAMPAI NIK berikutnya
+  // Ini memastikan tidak ada kontaminasi data antar anggota
+  for (let i = 0; i < nikMatches.length; i++) {
+    const nikInfo = nikMatches[i];
     if (usedNiks.has(nikInfo.nik)) continue;
 
-    const start = Math.max(0, nikInfo.startIdx - 50);
-    const end = Math.min(normalizedNoSpaces.length, nikInfo.startIdx + 250);
-    const context = normalizedNoSpaces.substring(start, end);
+    // Batas akhir: awal NIK berikutnya, atau end of text
+    const nextNikStart = (i + 1 < nikMatches.length) ? nikMatches[i + 1].startIdx : normalizedNoSpaces.length;
 
-    const member = parseMemberFromContext(context, nikInfo.nik);
+    // Ambil teks dari NIK ini sampai NIK berikutnya
+    const segment = normalizedNoSpaces.substring(nikInfo.startIdx, nextNikStart);
+
+    const member = parseMemberSequential(segment, nikInfo.nik);
     if (member && member.namaLengkap) {
       members.push(member);
       usedNiks.add(nikInfo.nik);
@@ -308,11 +367,13 @@ function extractAllMembers(fullText: string, lines: string[]): KKMember[] {
 }
 
 // ============================================================
-// Parser per-anggota dari konteks teks
+// Parser per-anggota: Sequential parsing dari segment teks
+// Setelah NIK, field di-parse berurutan sesuai kolom KK:
+// NIK → Nama → JK → Tempat Lahir → Tgl Lahir → Agama →
+// Pendidikan → Pekerjaan → Status Kawin → Status Keluarga → WN
 // ============================================================
-function parseMemberFromContext(context: string, nik: string): KKMember | null {
-  // Bersihkan: normalisasi whitespace
-  const text = context.replace(/\s+/g, ' ').trim();
+function parseMemberSequential(segment: string, nik: string): KKMember | null {
+  const text = segment.replace(/\s+/g, ' ').trim();
 
   const member: KKMember = {
     nik,
@@ -326,67 +387,86 @@ function parseMemberFromContext(context: string, nik: string): KKMember | null {
     statusPerkawinan: '',
     statusKeluarga: '',
     kewarganegaraan: '',
+    namaAyah: '',
+    namaIbu: '',
   };
 
-  // ============================================================
-  // 1. Extract nama — teks kapital setelah NIK, sebelum keyword field
-  // ============================================================
-  // Cari NIK di dalam konteks
+  // Cari posisi NIK dalam segment
   const nikIdx = text.indexOf(nik);
   if (nikIdx < 0) return null;
 
-  // Ambil teks setelah NIK
+  // Teks setelah NIK — ini berisi semua field anggota
   const afterNik = text.substring(nikIdx + nik.length).trim();
 
-  // Nama biasanya berada di awal setelah NIK, sebelum keyword jenis kelamin/agama dll
-  // Nama: huruf kapital, bisa mengandung spasi, titik, tanda hubung
-  const nameMatch = afterNik.match(/^[\s]*([A-Z][A-Z\s.'\-]{1,40})/);
-  if (nameMatch) {
-    let nama = nameMatch[1].trim();
-    // Bersihkan: jika nama berakhir dengan angka atau keyword, potong
-    nama = nama.replace(/\s+(LAKI[- ]?LAKI|PEREMPUAN|LAKI|PEREMP).*/i, '').trim();
-    nama = nama.replace(/\s+(ISLAM|KRISTEN|BUDHA|HINDU|KONGHUCU|KATOLIK).*/i, '').trim();
-    nama = nama.replace(/\s+\d{2}[\-\/]\d{2}[\-\/]\d{4}.*$/,'').trim();
-    if (nama.length >= 2) {
-      member.namaLengkap = nama;
+  // ========================================
+  // 1. Extract Nama (teks kapital setelah NIK)
+  // Berhenti di keyword yang bukan nama
+  // ========================================
+  const words = afterNik.split(/\s+/);
+  let nameWords: string[] = [];
+  let nameEnded = false;
+
+  for (const word of words) {
+    if (nameEnded) break;
+
+    // Skip angka (nomor urut, tanggal, dll)
+    if (/^\d+$/.test(word)) { nameEnded = true; continue; }
+
+    // Cek apakah ini tanggal (DD-MM-YYYY)
+    if (/^\d{2}[\-\/\.]\d{2}[\-\/\.]\d{2,4}$/.test(word)) { nameEnded = true; continue; }
+
+    // Cek apakah ini tanggal parsial (DD-MM)
+    if (/^\d{2}[\-\/\.]\d{2}$/.test(word)) { nameEnded = true; continue; }
+
+    // Cek apakah ini stop word (keyword field lain)
+    const upper = word.toUpperCase();
+    if (NAME_STOP_WORDS.has(upper)) { nameEnded = true; continue; }
+
+    // Cek apakah ini nama (huruf kapital, bisa mengandung titik/tanda hubung)
+    if (/^[A-Z][A-Z.'\-]+$/.test(upper) && upper.length >= 2) {
+      nameWords.push(upper);
+    } else if (/^[A-Z][a-z]+$/.test(word) && word.length >= 3) {
+      // Nama yang kapital hanya di huruf pertama (jarang terjadi di KK)
+      nameWords.push(word.toUpperCase());
+    } else {
+      // Karakter tidak dikenali — berhenti
+      nameEnded = true;
     }
   }
 
-  // Jika nama belum ketemu, coba cari di teks sebelum NIK
-  if (!member.namaLengkap) {
-    const beforeNik = text.substring(0, nikIdx).trim();
-    const words = beforeNik.split(/\s+/);
-    // Cari kata terakhir yang huruf kapital panjang (mungkin nama)
-    for (let i = words.length - 1; i >= 0; i--) {
-      const w = words[i];
-      if (w.length >= 3 && /^[A-Z][A-Z.'\-]*$/.test(w) && !/^\d+$/.test(w)) {
-        // Cek apakah ini angka baris (1, 2, 3...)
-        if (/^\d+$/.test(w)) continue;
+  member.namaLengkap = nameWords.join(' ').trim();
+
+  // Jika nama kurang dari 2 karakter, coba ambil 1-2 kata pertama yang kapital
+  if (member.namaLengkap.length < 2) {
+    for (const w of words.slice(0, 3)) {
+      if (/^[A-Z][A-Z.'\-]+$/.test(w) && w.length >= 3 && !NAME_STOP_WORDS.has(w)) {
         member.namaLengkap = w;
         break;
       }
     }
   }
 
-  // ============================================================
-  // 2. Jenis Kelamin
-  // ============================================================
-  if (/LAKI[\s\-]*LAKI|LAKILAKI/i.test(text)) member.jenisKelamin = 'LAKI-LAKI';
-  else if (/PEREMPUAN/i.test(text)) member.jenisKelamin = 'PEREMPUAN';
-  else if (/\bL\b/.test(text) && /LAKI/i.test(text)) member.jenisKelamin = 'LAKI-LAKI';
-  else if (/\bP\b/.test(text) && /PEREMPUAN/i.test(text)) member.jenisKelamin = 'PEREMPUAN';
+  if (!member.namaLengkap || member.namaLengkap.length < 2) return null;
 
-  // ============================================================
+  // ========================================
+  // 2. Jenis Kelamin
+  // ========================================
+  if (/LAKI[\s\-]*LAKI|LAKILAKI/i.test(afterNik)) {
+    member.jenisKelamin = 'LAKI-LAKI';
+  } else if (/\bPEREMPUAN\b/i.test(afterNik)) {
+    member.jenisKelamin = 'PEREMPUAN';
+  }
+
+  // ========================================
   // 3. Tanggal Lahir — DD-MM-YYYY atau DD/MM/YYYY
-  // ============================================================
+  // ========================================
   const datePatterns = [
-    /(\d{2})\s*[\-\/\.]\s*(\d{2})\s*[\-\/\.]\s*(\d{4})/, // DD-MM-YYYY
+    /(\d{2})\s*[\-\/\.]\s*(\d{2})\s*[\-\/\.]\s*(\d{4})/,
   ];
   for (const pat of datePatterns) {
-    const dm = text.match(pat);
+    const dm = afterNik.match(pat);
     if (dm) {
       const d = dm[1], m = dm[2], y = dm[3];
-      // Validasi: tanggal 01-31, bulan 01-12, tahun 1900-2025
       const dd = parseInt(d), mm = parseInt(m), yy = parseInt(y);
       if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yy >= 1900 && yy <= 2025) {
         member.tanggalLahir = `${y}-${m}-${d}`;
@@ -395,106 +475,107 @@ function parseMemberFromContext(context: string, nik: string): KKMember | null {
     }
   }
 
-  // ============================================================
-  // 4. Tempat Lahir — kota di sebelah tanggal lahir
-  // ============================================================
+  // ========================================
+  // 4. Tempat Lahir — kata kota SEBELUM tanggal lahir
+  // ========================================
   if (member.tanggalLahir) {
-    const dateStr = member.tanggalLahir.replace(/-/g, '[-/]'); // original format
-    const dateIdx = text.search(new RegExp(`\\d{2}\\s*[\\-\\/]\\s*\\d{2}\\s*[\\-\\/]\\s*${member.tanggalLahir.substring(0, 4)}`));
+    const dateRegex = /\d{2}\s*[\-\/\.]\s*\d{2}\s*[\-\/\.]\s*\d{4}/;
+    const dateIdx = afterNik.search(dateRegex);
     if (dateIdx > 0) {
-      // Ambil 1-2 kata sebelum tanggal
-      const beforeDate = text.substring(Math.max(0, dateIdx - 30), dateIdx).trim();
-      const words = beforeDate.split(/\s+/);
-      // Cari kata terakhir yang mirip nama kota (kapital, bukan keyword)
-      for (let i = words.length - 1; i >= 0; i--) {
-        const w = words[i];
+      // Ambil teks sebelum tanggal, cari kata terakhir yang mirip nama kota
+      const beforeDate = afterNik.substring(0, dateIdx).trim();
+      const beforeWords = beforeDate.split(/\s+/);
+
+      // Cari dari belakang — skip JK keywords
+      for (let i = beforeWords.length - 1; i >= 0; i--) {
+        const w = beforeWords[i].toUpperCase();
         if (w.length >= 2 && w.length <= 20 && /^[A-Z]+$/.test(w)) {
-          if (!/^LAKI|PEREMP|KEPALA|ISTRI|ANAK|KAWIN|ISLAM|KRISTEN|BUDHA|HINDU|SMA|SD|SMP|SLTA|SLTP|SEDERAJAT|PELAJAR|BURUH|PEDAGANG|WIRASWASTA|PNS|PEGAWAI|BELUM|SUDAH|CERAI|MENIKAH|WNI|WNA|KETENAGAKERJAAN|MENGURUS|RUMAH|TANGGA$/i.test(w)) {
-            member.tempatLahir = w;
-            break;
-          }
+          if (NAME_STOP_WORDS.has(w)) continue;
+          if (/^(LAKI|PEREMP|KEPALA|ISTRI|ANAK|KAWIN|ISLAM|KRISTEN|BUDHA|HINDU|SMA|SD|SMP|SLTA|SLTP|SEDERAJAT|PELAJAR|BURUH|PEDAGANG|WIRASWASTA|PNS|PEGAWAI|BELUM|SUDAH|CERAI|MENIKAH|WNI|WNA|MENGURUS|RUMAH|TANGGA|SOPIR|USTADZ|MUBALIGH|NEGERI|ASN|HARIAN|LEPAS|PEKEBUN|D1|D2|D3|S1|S2|S3)$/i.test(w)) continue;
+          member.tempatLahir = w;
+          break;
         }
       }
     }
   }
 
-  // ============================================================
-  // 5. Agama — fuzzy match terhadap daftar agama
-  // ============================================================
+  // ========================================
+  // 5. Agama
+  // ========================================
   for (const agama of AGAMA_VALUES) {
-    // Bersihkan agama dari tanda baca untuk regex
     const agamaClean = agama.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(agamaClean, 'i').test(text)) {
+    if (new RegExp(`\\b${agamaClean}\\b`, 'i').test(afterNik)) {
       member.agama = agama;
       break;
     }
   }
 
-  // ============================================================
-  // 6. Pendidikan — fuzzy match terhadap daftar pendidikan
-  // ============================================================
-  member.pendidikan = fuzzyMatchList(text, PENDIDIKAN_VALUES);
+  // ========================================
+  // 6. Pendidikan — fuzzy match
+  // ========================================
+  member.pendidikan = fuzzyMatchList(afterNik, PENDIDIKAN_VALUES);
 
-  // ============================================================
-  // 7. Pekerjaan — fuzzy match terhadap daftar pekerjaan
-  // ============================================================
-  member.pekerjaan = fuzzyMatchList(text, PEKERJAAN_VALUES);
+  // ========================================
+  // 7. Pekerjaan — fuzzy match
+  // ========================================
+  member.pekerjaan = fuzzyMatchList(afterNik, PEKERJAAN_VALUES);
 
-  // ============================================================
-  // 8. Status Perkawinan — fuzzy match
-  // ============================================================
-  // Khusus untuk status kawin, cek beberapa variant
-  if (/KAWIN\s*(BELUM|TIDAK)\s*(TERCATAT)?/i.test(text)) {
+  // ========================================
+  // 8. Status Perkawinan
+  // ========================================
+  if (/KAWIN\s*(BELUM|TIDAK)\s*(TERCATAT)?/i.test(afterNik)) {
     member.statusPerkawinan = 'KAWIN';
-  } else if (/KAWIN\s*TERCATAT/i.test(text)) {
+  } else if (/KAWIN\s*TERCATAT/i.test(afterNik)) {
     member.statusPerkawinan = 'KAWIN';
   } else {
-    member.statusPerkawinan = fuzzyMatchList(text, STATUS_KAWIN_VALUES);
+    member.statusPerkawinan = fuzzyMatchList(afterNik, STATUS_KAWIN_VALUES);
   }
 
-  // ============================================================
-  // 9. Status dalam Keluarga
-  // ============================================================
-  if (/KEPALA\s*KELUARGA/i.test(text)) member.statusKeluarga = 'KEPALA KELUARGA';
-  else if (/MENANTU/i.test(text)) member.statusKeluarga = 'MENANTU';
-  else if (/MERTUA/i.test(text)) member.statusKeluarga = 'MERTUA';
-  else if (/CUCU/i.test(text)) member.statusKeluarga = 'CUCU';
-  else if (/\bISTRI\b/i.test(text)) member.statusKeluarga = 'ISTRI';
-  else if (/\bANAK\b/i.test(text)) member.statusKeluarga = 'ANAK';
+  // ========================================
+  // 9. Status Keluarga
+  // ========================================
+  if (/KEPALA\s*KELUARGA/i.test(afterNik)) member.statusKeluarga = 'KEPALA KELUARGA';
+  else if (/MENANTU/i.test(afterNik)) member.statusKeluarga = 'MENANTU';
+  else if (/MERTUA/i.test(afterNik)) member.statusKeluarga = 'MERTUA';
+  else if (/CUCU/i.test(afterNik)) member.statusKeluarga = 'CUCU';
+  else if (/\bISTRI\b/i.test(afterNik)) member.statusKeluarga = 'ISTRI';
+  else if (/\bANAK\b/i.test(afterNik)) member.statusKeluarga = 'ANAK';
 
-  // ============================================================
+  // ========================================
   // 10. Kewarganegaraan
-  // ============================================================
-  member.kewarganegaraan = /WNA/i.test(text) ? 'WNA' : 'WNI';
+  // ========================================
+  member.kewarganegaraan = /\bWNA\b/i.test(afterNik) ? 'WNA' : 'WNI';
 
-  // ============================================================
-  // Validasi: harus punya nama
-  // ============================================================
-  if (!member.namaLengkap || member.namaLengkap.length < 2) return null;
+  // ========================================
+  // 11. Nama Ayah & Ibu (dalam segment anggota)
+  // Beberapa KK format lama menaruh nama ayah/ibu per anggota
+  // ========================================
+  const mAyah = afterNik.match(/NAMA\s*AYAH\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,30})\s*\]?/i);
+  if (mAyah) member.namaAyah = cleanName(mAyah[1].trim());
+
+  const mIbu = afterNik.match(/NAMA\s*IBU\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,30})\s*\]?/i);
+  if (mIbu) member.namaIbu = cleanName(mIbu[1].trim());
 
   return member;
 }
 
 // ============================================================
 // Helper: Fuzzy match — cocokkan teks dengan daftar nilai
-// Menggunakan skema pencocokan fleksibel (substring, typo minor)
 // ============================================================
 function fuzzyMatchList(text: string, values: string[]): string {
   let bestMatch = '';
   let bestScore = 0;
 
   for (const val of values) {
-    // Bersihkan value untuk regex
     const valRegex = val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Exact match (paling tinggi skor)
     if (new RegExp(`\\b${valRegex}\\b`, 'i').test(text)) {
-      return val; // langsung return, exact match
+      return val;
     }
 
-    // Substring match
+    // Substring match berdasarkan keyword
     if (valRegex.length >= 3) {
-      // Coba match keyword utama dari value
       const keywords = val.split(/[\s\/]+/).filter(k => k.length >= 3);
       let matchCount = 0;
       for (const kw of keywords) {
