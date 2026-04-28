@@ -282,15 +282,30 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     if (!scanPreview) return;
     setScanning(true);
     try {
-      const res = await apiFetch('/api/scan-kk', {
+      // Step 1: OCR dengan Tesseract.js (gratis, tanpa API key)
+      const Tesseract = await import('tesseract.js');
+      const result = await Tesseract.recognize(scanPreview, 'ind+eng', {
+        logger: () => {},
+      });
+      const ocrText = result.data.text;
+
+      if (!ocrText || ocrText.trim().length < 20) {
+        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas.');
+        return;
+      }
+
+      console.log('[Scan KK] OCR result:', ocrText.substring(0, 300));
+
+      // Step 2: Kirim teks ke API untuk parsing
+      const res = await apiFetch('/api/parse-kk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: scanPreview }),
+        body: JSON.stringify({ text: ocrText }),
       });
       const json = await res.json();
 
       if (!res.ok) {
-        toast.error(json.error || 'Gagal membaca KK');
+        toast.error(json.error || 'Gagal membaca format KK');
         return;
       }
 
@@ -1980,8 +1995,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
             )}
             <p className="text-sm text-muted-foreground text-center">
               {scanning
-                ? 'Sedang membaca data KK dengan AI...'
-                : 'Pastikan foto KK jelas dan tidak blur. AI akan membaca semua data KK dan mengisi form otomatis.'
+                ? 'Sedang membaca teks dari foto KK...'
+                : 'Pastikan foto KK jelas dan tidak blur. Tesseract OCR akan membaca teks secara otomatis (gratis, tanpa API key).'
               }
             </p>
             <div className="flex gap-2">
