@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer } from 'lucide-react';
+import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer, Camera, Loader2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, ImagePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -162,6 +162,17 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [expandedAnggota, setExpandedAnggota] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
+  // Scan KK
+  const [showScanDialog, setShowScanDialog] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanPreview, setScanPreview] = useState<string | null>(null);
+  const [scanRotation, setScanRotation] = useState(0);
+  const [scanFlipH, setScanFlipH] = useState(false);
+  const [scanFlipV, setScanFlipV] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputGalleryRef = useRef<HTMLInputElement>(null);
+  const originalScanRef = useRef<string | null>(null);
+
   // KK options for anggota mode
   const kkList = kkGroups.map(g => ({ noKK: g.noKK, namaKepala: g.kepala?.namaLengkap || '-' }));
 
@@ -234,6 +245,226 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   useEffect(() => {
     if (isActive) fetchPenduduk();
   }, [isActive, fetchPenduduk]);
+
+  // === SCAN KK: Rotasi gambar ===
+  const rotateScanPreview = (direction: 'cw' | 'ccw') => {
+    if (!scanPreview) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      const newRotation = direction === 'cw' ? scanRotation + 90 : scanRotation - 90;
+      if (newRotation % 180 !== 0) { [w, h] = [h, w]; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate((newRotation * Math.PI) / 180);
+      if (scanFlipH) ctx.scale(-1, 1);
+      if (scanFlipV) ctx.scale(1, -1);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      ctx.restore();
+      setScanPreview(canvas.toDataURL('image/jpeg', 0.92));
+      setScanRotation(newRotation);
+    };
+    img.src = scanPreview;
+  };
+
+  const flipScanPreview = (axis: 'h' | 'v') => {
+    if (!scanPreview) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (scanRotation % 180 !== 0) { [w, h] = [h, w]; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate((scanRotation * Math.PI) / 180);
+      const newFlipH = axis === 'h' ? !scanFlipH : scanFlipH;
+      const newFlipV = axis === 'v' ? !scanFlipV : scanFlipV;
+      if (newFlipH) ctx.scale(-1, 1);
+      if (newFlipV) ctx.scale(1, -1);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      ctx.restore();
+      setScanPreview(canvas.toDataURL('image/jpeg', 0.92));
+      setScanFlipH(newFlipH);
+      setScanFlipV(newFlipV);
+    };
+    img.src = scanPreview;
+  };
+
+  const resetScanTransform = () => {
+    if (originalScanRef.current) setScanPreview(originalScanRef.current);
+    setScanRotation(0);
+    setScanFlipH(false);
+    setScanFlipV(false);
+  };
+
+  // === SCAN KK: Handle file upload ===
+  const handleScanKK = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa gambar (JPG, PNG, dll)');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 10MB');
+      return;
+    }
+    const MAX_DIM = 2560;
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+        else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        originalScanRef.current = canvas.toDataURL('image/jpeg', 0.92);
+        setScanPreview(canvas.toDataURL('image/jpeg', 0.85));
+        setScanRotation(0);
+        setScanFlipH(false);
+        setScanFlipV(false);
+        setShowScanDialog(true);
+      }
+    };
+    img.onerror = () => toast.error('Gagal memuat gambar');
+    img.src = URL.createObjectURL(file);
+  };
+
+  // === SCAN KK: Proses dengan AI ===
+  const processScanKK = async () => {
+    if (!scanPreview) return;
+    setScanning(true);
+    try {
+      let parsedData: any;
+      let usedMethod = '';
+
+      toast.loading('Membaca KK dengan AI...', { id: 'scan-kk-progress' });
+
+      const res = await apiFetch('/api/scan-kk-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: scanPreview }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          parsedData = json.data;
+          usedMethod = 'AI Gemini';
+          console.log('[Scan KK] AI result:', JSON.stringify(parsedData, null, 2));
+        } else {
+          toast.dismiss('scan-kk-progress');
+          toast.error('AI gagal membaca KK: ' + (json.error || 'Unknown error'));
+          return;
+        }
+      } else {
+        const errData = await res.json().catch(() => ({ error: 'Unknown' }));
+        toast.dismiss('scan-kk-progress');
+        toast.error('Gagal membaca KK: ' + (errData.error || 'Server error'));
+        return;
+      }
+
+      if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
+        toast.dismiss('scan-kk-progress');
+        toast.error('Gagal mengenali format Kartu Keluarga. Pastikan foto KK jelas dan lengkap.');
+        return;
+      }
+
+      toast.dismiss('scan-kk-progress');
+
+      // Buka form KK Baru
+      setShowScanDialog(false);
+      setScanPreview(null);
+      setScanRotation(0);
+      setScanFlipH(false);
+      setScanFlipV(false);
+      originalScanRef.current = null;
+      setEditingId(null);
+      setFormError('');
+      setShowAddMenu(false);
+      setAddMode('KK_BARU');
+
+      // Mapping KK header ke form kepala
+      const kepala = parsedData.anggota?.find((a: any) => a.statusKeluarga === 'KEPALA KELUARGA') || parsedData.anggota?.[0];
+      const otherAnggota = parsedData.anggota?.filter((a: any) => a.statusKeluarga !== 'KEPALA KELUARGA') || [];
+
+      const mappedKepala: typeof defaultFormData = {
+        noKK: parsedData.noKK || '',
+        nik: kepala?.nik || '',
+        namaLengkap: kepala?.namaLengkap || parsedData.namaKepala || '',
+        jenisKelamin: kepala?.jenisKelamin || '',
+        statusKeluarga: 'KEPALA KELUARGA',
+        tempatLahir: kepala?.tempatLahir || '',
+        tanggalLahir: kepala?.tanggalLahir || '',
+        agama: kepala?.agama || '',
+        pendidikan: kepala?.pendidikan || '',
+        pekerjaan: kepala?.pekerjaan || '',
+        statusPerkawinan: kepala?.statusPerkawinan || '',
+        kewarganegaraan: kepala?.kewarganegaraan || 'WNI',
+        namaAyah: kepala?.namaAyah || parsedData.namaAyah || '',
+        namaIbu: kepala?.namaIbu || parsedData.namaIbu || '',
+        namaPanggilan: '', noHP: '',
+        punyaKTP: kepala?.tanggalLahir && hitungUmur(kepala.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
+        bantuan: [], bpjs: '',
+        alamat: parsedData.alamat || ALAMAT_DEFAULT,
+        rt: parsedData.rt || RT_DEFAULT,
+        rw: parsedData.rw || RW_DEFAULT,
+        kelurahan: parsedData.desa || KELURAHAN_DEFAULT,
+        kecamatan: parsedData.kecamatan || KECAMATAN_DEFAULT,
+        kabupaten: parsedData.kabupaten || KABUPATEN_DEFAULT,
+        provinsi: parsedData.provinsi || PROVINSI_DEFAULT,
+        keterangan: '',
+      };
+      setFormData(mappedKepala);
+
+      // Mapping anggota
+      const mappedAnggota = otherAnggota.map((a: any) => ({
+        noKK: parsedData.noKK || '',
+        nik: a.nik || '', namaLengkap: a.namaLengkap || '',
+        jenisKelamin: a.jenisKelamin || '',
+        statusKeluarga: a.statusKeluarga || 'ANAK',
+        tempatLahir: a.tempatLahir || '', tanggalLahir: a.tanggalLahir || '',
+        agama: a.agama || '', pendidikan: a.pendidikan || '',
+        pekerjaan: a.pekerjaan || '', statusPerkawinan: a.statusPerkawinan || '',
+        kewarganegaraan: a.kewarganegaraan || 'WNI',
+        namaAyah: a.namaAyah || parsedData.namaAyah || '',
+        namaIbu: a.namaIbu || parsedData.namaIbu || '',
+        namaPanggilan: '', noHP: '',
+        punyaKTP: a.tanggalLahir && hitungUmur(a.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
+        bantuan: [], bpjs: '',
+        alamat: parsedData.alamat || ALAMAT_DEFAULT,
+        rt: parsedData.rt || RT_DEFAULT,
+        rw: parsedData.rw || RW_DEFAULT,
+        kelurahan: parsedData.desa || KELURAHAN_DEFAULT,
+        kecamatan: parsedData.kecamatan || KECAMATAN_DEFAULT,
+        kabupaten: parsedData.kabupaten || KABUPATEN_DEFAULT,
+        provinsi: parsedData.provinsi || PROVINSI_DEFAULT,
+        keterangan: '',
+      }));
+      setAnggotaList(mappedAnggota);
+      setExpandedAnggota(new Set(mappedAnggota.map((_, i: number) => i)));
+      setShowForm(true);
+
+      const namaDisplay = kepala?.namaLengkap || parsedData.namaKepala || 'Kepala Keluarga';
+      const totalAnggota = parsedData.anggota?.length || 0;
+      toast.success(`KK berhasil dibaca (${usedMethod}): ${namaDisplay} (${totalAnggota} anggota). Silakan periksa dan lengkapi data.`);
+    } catch (err: any) {
+      toast.dismiss('scan-kk-progress');
+      console.error('[Scan KK] Error:', err);
+      toast.error('Gagal memproses gambar KK: ' + (err.message || 'Error tidak diketahui'));
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const openAddForm = (noKK?: string, isAnggota?: boolean) => {
     setEditingId(null);
@@ -914,6 +1145,29 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
                   >
                     <Plus className="h-4 w-4 text-blue-600" />
                     Tambah Anggota Keluarga
+                  </button>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center gap-2"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <Camera className="h-4 w-4 text-purple-600" />
+                    Scan KK (Kamera)
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center gap-2"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      fileInputGalleryRef.current?.click();
+                    }}
+                  >
+                    <ImagePlus className="h-4 w-4 text-purple-600" />
+                    Scan KK (Upload Gambar)
                   </button>
                 </div>
               )}
@@ -1802,6 +2056,112 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Hidden file input for Scan KK — Kamera */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) handleScanKK(file);
+          e.target.value = '';
+        }}
+      />
+
+      {/* Hidden file input for Scan KK — Galeri/Folder */}
+      <input
+        type="file"
+        ref={fileInputGalleryRef}
+        accept="image/*"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) handleScanKK(file);
+          e.target.value = '';
+        }}
+      />
+
+      {/* Scan KK Dialog */}
+      <Dialog open={showScanDialog} onOpenChange={(open) => {
+        if (!open && !scanning) {
+          setShowScanDialog(false);
+          setScanPreview(null);
+          setScanRotation(0);
+          setScanFlipH(false);
+          setScanFlipV(false);
+          originalScanRef.current = null;
+        }
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-purple-600" />
+              Scan Kartu Keluarga
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {scanPreview && (
+              <div className="relative rounded-lg overflow-hidden border border-gray-200">
+                <img src={scanPreview} alt="Preview KK" className="w-full h-auto max-h-[50vh] object-contain bg-gray-50" />
+                {!scanning && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2 py-1">
+                    <button onClick={() => rotateScanPreview('ccw')} className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors" title="Putar Kiri">
+                      <RotateCcw className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => rotateScanPreview('cw')} className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors" title="Putar Kanan">
+                      <RotateCw className="h-4 w-4" />
+                    </button>
+                    <div className="w-px h-5 bg-white/30 mx-0.5" />
+                    <button onClick={() => flipScanPreview('h')} className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors" title="Cermin Horizontal">
+                      <FlipHorizontal className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => flipScanPreview('v')} className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors" title="Cermin Vertikal">
+                      <FlipVertical className="h-4 w-4" />
+                    </button>
+                    <div className="w-px h-5 bg-white/30 mx-0.5" />
+                    <button onClick={resetScanTransform} className="px-2 py-1 rounded-full hover:bg-white/20 text-white text-xs transition-colors" title="Reset">
+                      Reset
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground text-center">
+              {scanning
+                ? 'Sedang membaca KK dengan AI Gemini. Mohon tunggu...'
+                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat.'}
+            </p>
+            <div className="flex gap-2">
+              <Button onClick={processScanKK} disabled={scanning} className="flex-1 bg-purple-600 hover:bg-purple-700">
+                {scanning ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Membaca KK...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    Proses Scan
+                  </span>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowScanDialog(false);
+                  setScanPreview(null);
+                }}
+                disabled={scanning}
+              >
+                Batal
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
