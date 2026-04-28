@@ -339,49 +339,136 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     img.src = URL.createObjectURL(file);
   };
 
-  // === SCAN KK: Proses dengan AI ===
+  // === SCAN KK: Proses dengan AI (client-side, langsung ke Puter.js) ===
   const processScanKK = async () => {
     if (!scanPreview) return;
     setScanning(true);
     try {
       let parsedData: any;
-      let usedMethod = '';
+      let usedMethod = 'AI Gemini (Direct)';
 
       toast.loading('Membaca KK dengan AI...', { id: 'scan-kk-progress' });
 
-      const res = await apiFetch('/api/scan-kk-ai', {
+      // Resize gambar di client jika terlalu besar (maks 2000px)
+      let imageDataUrl = scanPreview;
+      try {
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Gagal load image'));
+          img.src = scanPreview!;
+        });
+        const MAX = 2000;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          console.log('[Scan KK] Client resize:', img.width, '->', w);
+        }
+      } catch (e: any) {
+        console.warn('[Scan KK] Client resize skip:', e.message);
+      }
+
+      // Langsung panggil Puter API dari browser (tanpa lewat server)
+      const PUTER_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiZ3VpIiwidmVyc2lvbiI6IjAuMC4wIiwidXVpZCI6ImI0ZTJmYTQ5LTE3YTYtNGNmNi1iZmM2LTJlNjI4ZDRhMTIyMiIsInVzZXJfdWlkIjoiZDZkMzUzODMtMDQ5My00OTExLWFlODYtOWJkNDgzMmEyNzEzIiwiaWF0IjoxNzc3NDA2ODAzfQ.upFccwXCqxpJMgs-NyQFUMiK8BI4_3oI8rKlStEdS_U';
+
+      const SYSTEM_PROMPT = `Kamu adalah AI OCR spesialis untuk membaca Kartu Keluarga (KK) Indonesia.
+Baca gambar KK Indonesia dan kembalikan data JSON EXACTLY sesuai schema.
+Field: noKK, namaKepala, alamat, rt, rw, desa, kecamatan, kabupaten, provinsi, namaAyah, namaIbu, anggota (array dengan field: nik, namaLengkap, jenisKelamin, tempatLahir, tanggalLahir(YYYY-MM-DD), agama, pendidikan, pekerjaan, statusPerkawinan, statusKeluarga, kewarganegaraan).
+KEMBALIKAN HANYA JSON, tanpa markdown.`;
+
+      const aiResponse = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: scanPreview }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${PUTER_TOKEN}`,
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Baca Kartu Keluarga ini. Baca header (No KK, alamat, RT/RW, desa, kecamatan, kabupaten, provinsi, nama ayah, nama ibu), lalu baca tabel anggota baris per baris. Kembalikan JSON saja.' },
+                { type: 'image_url', image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+          temperature: 0.05,
+        }),
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          parsedData = json.data;
-          usedMethod = 'AI Gemini';
-          console.log('[Scan KK] AI result:', JSON.stringify(parsedData, null, 2));
-        } else {
-          toast.dismiss('scan-kk-progress');
-          // Tampilkan detail error AI untuk debugging
-          const detail = json.aiResponse ? '\nDetail AI: ' + json.aiResponse.substring(0, 200) : '';
-          toast.error('AI gagal membaca KK: ' + (json.error || 'Unknown error') + detail, { duration: 8000 });
-          console.error('[Scan KK] AI error detail:', json);
-          return;
-        }
-      } else {
-        const errData = await res.json().catch(() => ({ error: 'Unknown' }));
+      if (!aiResponse.ok) {
+        const errText = await aiResponse.text();
         toast.dismiss('scan-kk-progress');
-        const detail = errData.aiResponse ? '\nDetail AI: ' + errData.aiResponse.substring(0, 200) : '';
-        toast.error('Gagal membaca KK: ' + (errData.error || 'Server error') + detail, { duration: 8000 });
-        console.error('[Scan KK] Server error:', errData);
+        toast.error('AI API error: ' + aiResponse.status + ' - ' + errText.substring(0, 200), { duration: 10000 });
+        console.error('[Scan KK] AI API error:', aiResponse.status, errText);
         return;
       }
 
-      if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
+      const aiResult = await aiResponse.json();
+      const messageContent = aiResult.choices?.[0]?.message?.content;
+
+      if (!messageContent) {
         toast.dismiss('scan-kk-progress');
-        toast.error('Gagal mengenali format KK. Data: noKK=' + (parsedData?.noKK || '-') + ' anggota=' + (parsedData?.anggota?.length || 0), { duration: 8000 });
+        toast.error('AI tidak mengembalikan respons', { duration: 8000 });
         return;
+      }
+
+      console.log('[Scan KK] AI raw response:', messageContent.substring(0, 500));
+
+      // Parse JSON dari response
+      let cleaned = messageContent.trim();
+      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '');
+      else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*\n?/, '').replace(/\n?\s*```\s*$/, '');
+      cleaned = cleaned.trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) cleaned = jsonMatch[0];
+
+      try {
+        parsedData = JSON.parse(cleaned);
+      } catch (parseErr: any) {
+        toast.dismiss('scan-kk-progress');
+        toast.error('AI response tidak valid: ' + parseErr.message, { duration: 8000 });
+        console.error('[Scan KK] Parse error:', parseErr.message, 'Raw:', messageContent.substring(0, 300));
+        return;
+      }
+
+      if (!parsedData.noKK && (!parsedData.anggota || parsedData.anggota.length === 0)) {
+        toast.dismiss('scan-kk-progress');
+        toast.error('AI tidak berhasil membaca KK. AI response: ' + JSON.stringify(parsedData).substring(0, 300), { duration: 10000 });
+        console.error('[Scan KK] AI baca tapi data kosong:', parsedData);
+        return;
+      }
+
+      console.log('[Scan KK] ✅ Berhasil! noKK:', parsedData.noKK, 'anggota:', parsedData.anggota?.length);
+
+      // Normalisasi tanggal (DD-MM-YYYY → YYYY-MM-DD)
+      const normalizeDate = (raw: any): string => {
+        if (!raw) return '';
+        const s = String(raw).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const dm = s.match(/(\d{2})[-/.](\d{2})[-/.](\d{4})/);
+        if (dm) { const dd = +dm[1], mm = +dm[2], yy = +dm[3]; if (dd>=1&&dd<=31&&mm>=1&&mm<=12&&yy>=1900&&yy<=2030) return `${yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; }
+        return '';
+      };
+
+      // Normalisasi data anggota
+      if (parsedData.anggota) {
+        parsedData.anggota = parsedData.anggota.map((a: any) => ({
+          ...a,
+          nik: String(a.nik || '').replace(/\D/g, '').substring(0, 16),
+          tanggalLahir: normalizeDate(a.tanggalLahir),
+          kewarganegaraan: /WNA/i.test(a.kewarganegaraan || '') ? 'WNA' : 'WNI',
+        }));
       }
 
       toast.dismiss('scan-kk-progress');
