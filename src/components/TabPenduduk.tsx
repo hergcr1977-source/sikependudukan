@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer, Camera, Loader2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical } from 'lucide-react';
+import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer, Camera, Loader2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, ImagePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -170,7 +170,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [scanRotation, setScanRotation] = useState(0);
   const [scanFlipH, setScanFlipH] = useState(false);
   const [scanFlipV, setScanFlipV] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);  // kamera
+  const fileInputGalleryRef = useRef<HTMLInputElement>(null);  // galeri/folder
 
   // Rotasi gambar secara real di canvas
   const rotateScanPreview = (direction: 'cw' | 'ccw') => {
@@ -1180,7 +1181,18 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
                     }}
                   >
                     <Camera className="h-4 w-4 text-purple-600" />
-                    Scan KK (Foto)
+                    Scan KK (Kamera)
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center gap-2"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      fileInputGalleryRef.current?.click();
+                    }}
+                  >
+                    <ImagePlus className="h-4 w-4 text-purple-600" />
+                    Scan KK (Upload Gambar)
                   </button>
                 </div>
               )}
@@ -2070,12 +2082,25 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Hidden file input for Scan KK */}
+      {/* Hidden file input for Scan KK — Kamera */}
       <input
         type="file"
         ref={fileInputRef}
         accept="image/*"
         capture="environment"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) handleScanKK(file);
+          e.target.value = '';
+        }}
+      />
+
+      {/* Hidden file input for Scan KK — Galeri/Folder */}
+      <input
+        type="file"
+        ref={fileInputGalleryRef}
+        accept="image/*"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
