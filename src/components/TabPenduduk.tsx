@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer, Camera, Loader2 } from 'lucide-react';
+import { Plus, Search, FileUp, FileDown, Pencil, Trash2, ChevronDown, ChevronRight, ChevronUp, Users, X, Filter, SlidersHorizontal, Printer, Camera, Loader2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AGAMA, PENDIDIKAN, PEKERJAAN, STATUS_PERKAWINAN, BANTUAN_OPTIONS,
@@ -167,7 +167,78 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanPreview, setScanPreview] = useState<string | null>(null);
+  const [scanRotation, setScanRotation] = useState(0);
+  const [scanFlipH, setScanFlipH] = useState(false);
+  const [scanFlipV, setScanFlipV] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Rotasi gambar secara real di canvas
+  const rotateScanPreview = (direction: 'cw' | 'ccw') => {
+    if (!scanPreview) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      const newRotation = direction === 'cw' ? scanRotation + 90 : scanRotation - 90;
+      // Jika rotasi 90/270, swap width/height
+      if (newRotation % 180 !== 0) { [w, h] = [h, w]; }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate((newRotation * Math.PI) / 180);
+      if (scanFlipH) ctx.scale(-1, 1);
+      if (scanFlipV) ctx.scale(1, -1);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      ctx.restore();
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      setScanPreview(dataUrl);
+      setScanRotation(newRotation);
+    };
+    img.src = scanPreview;
+  };
+
+  // Flip gambar (cermin)
+  const flipScanPreview = (axis: 'h' | 'v') => {
+    if (!scanPreview) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (scanRotation % 180 !== 0) { [w, h] = [h, w]; }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate((scanRotation * Math.PI) / 180);
+      const newFlipH = axis === 'h' ? !scanFlipH : scanFlipH;
+      const newFlipV = axis === 'v' ? !scanFlipV : scanFlipV;
+      if (newFlipH) ctx.scale(-1, 1);
+      if (newFlipV) ctx.scale(1, -1);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      ctx.restore();
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      setScanPreview(dataUrl);
+      setScanFlipH(newFlipH);
+      setScanFlipV(newFlipV);
+    };
+    img.src = scanPreview;
+  };
+
+  // Reset rotasi ke gambar original
+  const resetScanTransform = () => {
+    if (originalScanRef.current) {
+      setScanPreview(originalScanRef.current);
+    }
+    setScanRotation(0);
+    setScanFlipH(false);
+    setScanFlipV(false);
+  };
+
+  // Original preview untuk reset rotasi
+  const originalScanRef = useRef<string | null>(null);
 
   // KK options for anggota mode
   const kkList = kkGroups.map(g => ({ noKK: g.noKK, namaKepala: g.kepala?.namaLengkap || '-' }));
@@ -269,7 +340,11 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       if (ctx) {
         ctx.drawImage(img, 0, 0, w, h);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        originalScanRef.current = dataUrl;
         setScanPreview(dataUrl);
+        setScanRotation(0);
+        setScanFlipH(false);
+        setScanFlipV(false);
         setShowScanDialog(true);
       }
     };
@@ -323,6 +398,10 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       // Buka form KK Baru
       setShowScanDialog(false);
       setScanPreview(null);
+      setScanRotation(0);
+      setScanFlipH(false);
+      setScanFlipV(false);
+      originalScanRef.current = null;
       setEditingId(null);
       setFormError('');
       setShowAddMenu(false);
@@ -1990,6 +2069,10 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         if (!open && !scanning) {
           setShowScanDialog(false);
           setScanPreview(null);
+          setScanRotation(0);
+          setScanFlipH(false);
+          setScanFlipV(false);
+          originalScanRef.current = null;
         }
       }}>
         <DialogContent className="max-w-sm">
@@ -2001,8 +2084,50 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           </DialogHeader>
           <div className="space-y-4">
             {scanPreview && (
-              <div className="rounded-lg overflow-hidden border border-gray-200">
-                <img src={scanPreview} alt="Preview KK" className="w-full h-auto max-h-[40vh] object-contain bg-gray-50" />
+              <div className="relative rounded-lg overflow-hidden border border-gray-200">
+                <img src={scanPreview} alt="Preview KK" className="w-full h-auto max-h-[50vh] object-contain bg-gray-50" />
+                {/* Tombol rotasi — overlay di atas gambar */}
+                {!scanning && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2 py-1">
+                    <button
+                      onClick={() => rotateScanPreview('ccw')}
+                      className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                      title="Putar Kiri"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => rotateScanPreview('cw')}
+                      className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                      title="Putar Kanan"
+                    >
+                      <RotateCw className="h-4 w-4" />
+                    </button>
+                    <div className="w-px h-5 bg-white/30 mx-0.5" />
+                    <button
+                      onClick={() => flipScanPreview('h')}
+                      className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                      title="Cermin Horizontal"
+                    >
+                      <FlipHorizontal className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => flipScanPreview('v')}
+                      className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                      title="Cermin Vertikal"
+                    >
+                      <FlipVertical className="h-4 w-4" />
+                    </button>
+                    <div className="w-px h-5 bg-white/30 mx-0.5" />
+                    <button
+                      onClick={resetScanTransform}
+                      className="px-2 py-1 rounded-full hover:bg-white/20 text-white text-xs transition-colors"
+                      title="Reset"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             <p className="text-sm text-muted-foreground text-center">
