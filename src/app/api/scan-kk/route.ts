@@ -7,13 +7,16 @@ export const dynamic = 'force-dynamic';
 function compressBase64Image(base64: string): string {
   const matches = base64.match(/^data:(image\/\w+);base64,(.+)$/);
   if (!matches) return base64;
-  const mimeType = matches[1];
   const buffer = Buffer.from(matches[2], 'base64');
-  // Jika kurang dari 2MB, kirim apa adanya
   if (buffer.length < 2 * 1024 * 1024) return base64;
-  // Jika lebih dari 2MB, turunkan quality dengan resize (jadikan JPEG jika bukan)
   return `data:image/jpeg;base64,${matches[2]}`;
 }
+
+const MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash-8b',
+];
 
 export async function POST(request: NextRequest) {
   const session = await requireAdmin();
@@ -32,21 +35,13 @@ export async function POST(request: NextRequest) {
 
     const apiKey = process.env.GEMINI_API_KEY || 'AIzaSyBQmcMqOw-g5ZZ1aTamSCdGAJ7uqRqGlRo';
     if (!apiKey) {
-      return NextResponse.json(
-        { error: 'API Key belum dikonfigurasi.' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'API Key belum dikonfigurasi.' }, { status: 500 });
     }
 
-    // Kompresi gambar jika terlalu besar
     const processedImage = compressBase64Image(image);
     const mimeMatch = processedImage.match(/^data:(image\/\w+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const base64Data = processedImage.split(',')[1];
-
-    // Gunakan Google Gemini API
-    const model = 'gemini-1.5-flash';
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const prompt = `Baca seluruh isi dokumen Kartu Keluarga Indonesia ini. Ekstrak SEMUA data dalam format JSON yang presisi.
 
@@ -88,7 +83,7 @@ Output JSON dengan struktur tepat seperti ini:
 
 Hanya output JSON saja, tanpa komentar atau penjelasan.`;
 
-    const geminiBody: any = {
+    const geminiBody = {
       contents: [{
         parts: [
           { text: prompt },
@@ -106,53 +101,77 @@ Hanya output JSON saja, tanpa komentar atau penjelasan.`;
       },
     };
 
-    console.log('[Scan KK] Sending to Gemini API...', { mimeType, imageSize: Buffer.from(base64Data, 'base64').length });
+    // Coba beberapa model secara berurutan
+    let lastError = '';
+    let result: any = null;
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiBody),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[Scan KK] Gemini API error:', response.status, errText);
-      let errMsg = 'Gagal memproses gambar dengan AI';
+    for (const model of MODELS) {
       try {
-        const errJson = JSON.parse(errText);
-        errMsg = errJson.error?.message || errMsg;
-      } catch {}
-      return NextResponse.json({ error: errMsg }, { status: 500 });
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        console.log(`[Scan KK] Trying model: ${model}...`);
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiBody),
+        });
+
+        if (response.ok) {
+          result = await response.json();
+          console.log(`[Scan KK] Success with model: ${model}`);
+          break;
+        }
+
+        const errText = await response.text();
+        console.error(`[Scan KK] ${model} failed (${response.status}):`, errText.substring(0, 200));
+        lastError = errText;
+
+        // Jika 404 (model tidak ada), lanjut ke model berikutnya
+        if (response.status === 404) continue;
+        // Jika 429 (quota) atau 400 (location), langsung berhenti
+        if (response.status === 429 || response.status === 400) {
+          let errMsg = 'Quota API habis. ';
+          try {
+            const errJson = JSON.parse(errText);
+            if (errJson.error?.message?.includes('location')) {
+              errMsg += 'Lokasi tidak didukung. Pastikan billing sudah diaktifkan di Google AI Studio.';
+            } else if (errJson.error?.message?.includes('quota') || errJson.error?.message?.includes('Quota')) {
+              errMsg += 'Batas penggunaan gratis tercapai. Aktifkan billing di aistudio.google.com untuk meningkatkan limit.';
+            } else {
+              errMsg += errJson.error?.message || '';
+            }
+          } catch { errMsg += errText.substring(0, 200); }
+          return NextResponse.json({ error: errMsg }, { status: 500 });
+        }
+      } catch (e: any) {
+        lastError = e.message;
+        continue;
+      }
     }
 
-    const result = await response.json();
+    if (!result) {
+      return NextResponse.json({ error: 'Semua model AI gagal. Pastikan billing sudah diaktifkan di Google AI Studio (aistudio.google.com).' }, { status: 500 });
+    }
+
     const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
       const blockReason = result.candidates?.[0]?.finishReason;
-      console.error('[Scan KK] No content from Gemini:', JSON.stringify(result).substring(0, 500));
       return NextResponse.json(
-        { error: `AI tidak dapat membaca gambar. ${blockReason === 'SAFETY' ? 'Gambar diblokir oleh filter keamanan AI.' : 'Pastikan gambar KK jelas dan tidak blur.'}` },
+        { error: `AI tidak dapat membaca gambar. ${blockReason === 'SAFETY' ? 'Gambar diblokir oleh filter keamanan.' : 'Pastikan gambar KK jelas.'}` },
         { status: 500 }
       );
     }
 
-    // Parse JSON dari response AI
+    // Parse JSON
     let parsed;
     try {
-      // Coba extract JSON dari response (mungkin ada markdown code block)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        parsed = JSON.parse(content);
-      }
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
     } catch {
-      console.error('[Scan KK] Failed to parse AI response:', content.substring(0, 500));
       return NextResponse.json({ error: 'Format data tidak dikenali dari gambar KK' }, { status: 422 });
     }
 
-    // Validasi minimal data
     if (!parsed.noKK || !parsed.anggota || !Array.isArray(parsed.anggota) || parsed.anggota.length === 0) {
       return NextResponse.json({ error: 'Data KK tidak lengkap, pastikan gambar KK jelas' }, { status: 422 });
     }
