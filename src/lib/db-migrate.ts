@@ -1,19 +1,10 @@
 /**
  * Database migration: ensure rtId columns exist in all data tables.
- * Called from page.tsx (server component) before any data is fetched.
+ * Must be called from EVERY API route that queries data tables.
  */
 import { db } from '@/lib/db';
 
-const MIGRATION_KEY = '__db_migrated_v1';
-
-// In-memory flag to avoid running migration multiple times in the same server process
-let migrated = false;
-
 export async function ensureRtIdColumns() {
-  // Skip if already migrated in this server instance
-  if (migrated) return;
-  migrated = true;
-
   const tables = [
     'Penduduk', 'PendudukSementara', 'Kejadian',
     'LaporanBulanan', 'KasRT', 'PenerimaSembako', 'SembakoSnapshot'
@@ -35,19 +26,19 @@ export async function ensureRtIdColumns() {
       );
 
       if (!colCheck.length) {
-        // Add rtId column with DEFAULT 1 (all existing data gets rtId=1 = RT.001)
+        // Add rtId column - existing data automatically gets rtId=1 (RT.001)
+        // NOT NULL DEFAULT 1 means NO existing data is touched or deleted
         await db.$executeRawUnsafe(
           `ALTER TABLE "${table}" ADD COLUMN "rtId" INTEGER NOT NULL DEFAULT 1`
         );
-        console.log(`[migrate] Added rtId column to ${table}`);
+        console.log(`[migrate] Added rtId column to ${table} (existing data preserved with rtId=1)`);
       }
-
-      // Ensure existing data has rtId set (fix NULLs just in case)
-      await db.$executeRawUnsafe(
-        `UPDATE "${table}" SET "rtId" = 1 WHERE "rtId" IS NULL`
-      );
     } catch (e) {
-      console.log(`[migrate] ${table}:`, e);
+      // Column might already exist from concurrent request - that's OK
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('already exists') && !msg.includes('duplicate')) {
+        console.log(`[migrate] ${table}:`, msg.substring(0, 200));
+      }
     }
   }
 }
@@ -96,7 +87,6 @@ export async function ensureAuthTables() {
     await db.$executeRawUnsafe(`
       INSERT INTO "RukunTetangga" ("namaRT", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi", "alamat", "ketuaRT", "aktif")
       VALUES ('001', '002', 'SUKAMAJU', 'CIBUNGBULANG', 'BOGOR', 'JAWA BARAT', 'KP. CEMPLANG', 'HERMAN GOZALI', true)
-      RETURNING "id"
     `);
     const inserted = await db.$queryRawUnsafe<Array<{ id: number }>>(
       `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
