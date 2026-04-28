@@ -68,6 +68,19 @@ async function ensureAuthTables() {
     `);
   }
 
+  // If herman exists but has no rtId, update it
+  if (existingHerman.length && rt001Id) {
+    const hermanData = await db.$queryRawUnsafe<Array<{ rtId: number | null }>>(
+      `SELECT "rtId" FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
+    );
+    if (hermanData.length && hermanData[0].rtId === null) {
+      await db.$executeRawUnsafe(
+        `UPDATE "AppUser" SET "rtId" = $1 WHERE "username" = 'herman'`,
+        rt001Id
+      );
+    }
+  }
+
   // Seed superadmin
   const existingSA = await db.$queryRawUnsafe<Array<{ id: number }>>(
     `SELECT id FROM "AppUser" WHERE "username" = 'superadmin' LIMIT 1`
@@ -77,6 +90,59 @@ async function ensureAuthTables() {
       INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
       VALUES ('superadmin', 'SuperAdmin123!', 'SUPER ADMIN', 'superadmin', NULL, true)
     `);
+  }
+
+  // === Add rtId column to ALL data tables (multi-RT migration) ===
+  const dataTables = [
+    'Penduduk', 'PendudukSementara', 'Kejadian',
+    'LaporanBulanan', 'KasRT', 'PenerimaSembako', 'SembakoSnapshot'
+  ];
+
+  for (const table of dataTables) {
+    try {
+      // Check if table exists
+      const tableCheck = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
+        `SELECT table_name FROM information_schema.tables WHERE table_name = $1`,
+        table.toLowerCase()
+      );
+      if (!tableCheck.length) continue;
+
+      // Check if rtId column exists
+      const colCheck = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = 'rtid'`,
+        table.toLowerCase()
+      );
+
+      if (!colCheck.length) {
+        // Add rtId column with DEFAULT 1
+        await db.$executeRawUnsafe(
+          `ALTER TABLE "${table}" ADD COLUMN "rtId" INTEGER NOT NULL DEFAULT 1`
+        );
+        console.log(`Added rtId column to ${table}`);
+      }
+
+      // Ensure existing data has rtId set (fix NULLs)
+      await db.$executeRawUnsafe(
+        `UPDATE "${table}" SET "rtId" = 1 WHERE "rtId" IS NULL`
+      );
+    } catch (e) {
+      console.log(`rtId migration for ${table}:`, e);
+    }
+  }
+
+  // Also add rtId column to KasRT if it was created by setup-db (without rtId)
+  try {
+    const kasColCheck = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'kasrt' AND column_name = 'rtid'`
+    );
+    if (!kasColCheck.length) {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "KasRT" ADD COLUMN IF NOT EXISTS "rtId" INTEGER NOT NULL DEFAULT 1`
+      );
+      console.log('Added rtId column to KasRT');
+    }
+  } catch (e) {
+    console.log('KasRT rtId migration:', e);
   }
 }
 

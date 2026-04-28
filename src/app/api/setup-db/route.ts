@@ -96,6 +96,16 @@ export async function GET() {
     const laporanResult = await ensureColumn('LaporanBulanan', 'keterangan', 'TEXT');
     if (laporanResult) results.push(laporanResult);
 
+    // === Add rtId columns to all data tables (multi-RT) ===
+    const rtIdTables = [
+      'Penduduk', 'PendudukSementara', 'Kejadian',
+      'LaporanBulanan', 'KasRT', 'PenerimaSembako', 'SembakoSnapshot'
+    ];
+    for (const table of rtIdTables) {
+      const r = await ensureColumn(table, 'rtId', 'INTEGER', 1);
+      if (r) results.push(r);
+    }
+
     // KasRT table - create if not exists
     try {
       const tableCheck = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
