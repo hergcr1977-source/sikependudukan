@@ -1,8 +1,16 @@
 // ============================================================
-// parse-kk.ts — Parser OCR Kartu Keluarga (client-side)
-// V3: Keyword-based extraction (bukan sequential)
-// - Exclude No. KK dari daftar NIK anggota (fix bug #1)
-// - Extract semua field by keyword dulu, lalu sisa = nama (fix bug #2)
+// parse-kk.ts — Parser OCR Kartu Keluarga v4
+// 
+// STRATEGI: Label-based extraction per NIK segment
+// 1. Exclude No. KK dari NIK anggota (fix bug #1)
+// 2. Per NIK, ambil segment sampai NIK berikutnya
+// 3. Dalam segment, cari LABEL (NIK, NAMA, JK, AGAMA, dll)
+//    untuk mengidentifikasi value yang benar ke field yang benar
+// 4. Jika label tidak ketemu, fallback ke keyword extraction
+// 5. Sisa text = nama
+//
+// VALUES harus EXACTLY match constants.ts agar Select field bisa
+// menampilkan value dengan benar.
 // ============================================================
 
 interface KKMember {
@@ -38,33 +46,117 @@ interface KKParseResult {
 }
 
 // ============================================================
-// Nilai valid untuk fuzzy matching
+// VALUES — harus EXACTLY match constants.ts !!!
 // ============================================================
-const AGAMA_VALUES = ['ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'KONGHUCU', 'KATOLIK', 'LAINNYA'];
+
+// AGAMA = ['ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'LAINNYA']
+const AGAMA_VALUES = ['ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'LAINNYA'] as const;
+// OCR variants → map ke valid value
+const AGAMA_MAP: Record<string, string> = {
+  'ISLAM': 'ISLAM',
+  'KRISTEN': 'KRISTEN',
+  'BUDHA': 'BUDHA',
+  'HINDU': 'HINDU',
+  'KONGHUCU': 'LAINNYA',
+  'KATOLIK': 'KRISTEN',
+  'PROTESTAN': 'KRISTEN',
+};
+
+// PENDIDIKAN = ['TIDAK/BELUM SEKOLAH', 'BELUM TAMAT SD/SEDERAJAT', 'TIDAK TAMAT SD/SEDERAJAT',
+//   'SD/SEDERAJAT', 'SMP/SEDERAJAT', 'SMA/SEDERAJAT', 'PAKET A', 'PAKET B', 'PAKET C',
+//   'SLB', 'D1', 'D2', 'D3', 'S1', 'S2', 'S3']
 const PENDIDIKAN_VALUES = [
   'TIDAK/BELUM SEKOLAH', 'BELUM TAMAT SD/SEDERAJAT', 'TIDAK TAMAT SD/SEDERAJAT',
   'SD/SEDERAJAT', 'SMP/SEDERAJAT', 'SMA/SEDERAJAT',
   'PAKET A', 'PAKET B', 'PAKET C', 'SLB',
   'D1', 'D2', 'D3', 'S1', 'S2', 'S3',
-  'DIPLOMA I/II/III', 'SARJANA', 'PASCA SARJANA',
-];
+] as const;
+const PENDIDIKAN_MAP: Record<string, string> = {
+  'TIDAK/BELUM SEKOLAH': 'TIDAK/BELUM SEKOLAH',
+  'BELUM TAMAT SD/SEDERAJAT': 'BELUM TAMAT SD/SEDERAJAT',
+  'TIDAK TAMAT SD/SEDERAJAT': 'TIDAK TAMAT SD/SEDERAJAT',
+  'SD/SEDERAJAT': 'SD/SEDERAJAT',
+  'SMP/SEDERAJAT': 'SMP/SEDERAJAT',
+  'SMA/SEDERAJAT': 'SMA/SEDERAJAT',
+  'PAKET A': 'PAKET A',
+  'PAKET B': 'PAKET B',
+  'PAKET C': 'PAKET C',
+  'SLB': 'SLB',
+  'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3',
+  'DIPLOMA I/II/III': 'D3',
+  'DIPLOMA': 'D3',
+  'SARJANA': 'S1',
+  'PASCA SARJANA': 'S2',
+  'MAGISTER': 'S2',
+  'DOKTOR': 'S3',
+  'SD': 'SD/SEDERAJAT',
+  'SMP': 'SMP/SEDERAJAT',
+  'SMA': 'SMA/SEDERAJAT',
+  'SEDERAJAT': 'SD/SEDERAJAT',
+};
+
+// PEKERJAAN = ['PELAJAR/MAHASISWA', 'PNS', 'SOPIR', 'USTADZ/MUBALIGH', 'PEDAGANG',
+//   'BELUM/TIDAK BEKERJA', 'BURUH HARIAN LEPAS', 'MENGURUS RUMAH TANGGA',
+//   'WIRASWASTA', 'PEGAWAI ASN', 'KARYAWAN SWASTA', 'TNI', 'POLRI']
 const PEKERJAAN_VALUES = [
   'PELAJAR/MAHASISWA', 'PNS', 'SOPIR', 'USTADZ/MUBALIGH', 'PEDAGANG',
   'BELUM/TIDAK BEKERJA', 'BURUH HARIAN LEPAS', 'MENGURUS RUMAH TANGGA',
   'WIRASWASTA', 'PEGAWAI ASN', 'KARYAWAN SWASTA', 'TNI', 'POLRI',
-  'BURUH', 'PETANI/PEKEBUN', 'PEGAWAI NEGERI',
-];
-const STATUS_KAWIN_VALUES = ['BELUM MENIKAH', 'KAWIN', 'CERAI HIDUP', 'CERAI MATI', 'BELUM KAWIN'];
+] as const;
+const PEKERJAAN_MAP: Record<string, string> = {
+  'PELAJAR/MAHASISWA': 'PELAJAR/MAHASISWA',
+  'PNS': 'PNS',
+  'SOPIR': 'SOPIR',
+  'USTADZ/MUBALIGH': 'USTADZ/MUBALIGH',
+  'PEDAGANG': 'PEDAGANG',
+  'BELUM/TIDAK BEKERJA': 'BELUM/TIDAK BEKERJA',
+  'BURUH HARIAN LEPAS': 'BURUH HARIAN LEPAS',
+  'MENGURUS RUMAH TANGGA': 'MENGURUS RUMAH TANGGA',
+  'WIRASWASTA': 'WIRASWASTA',
+  'PEGAWAI ASN': 'PEGAWAI ASN',
+  'KARYAWAN SWASTA': 'KARYAWAN SWASTA',
+  'TNI': 'TNI',
+  'POLRI': 'POLRI',
+  'PELAJAR': 'PELAJAR/MAHASISWA',
+  'MAHASISWA': 'PELAJAR/MAHASISWA',
+  'BURUH': 'BURUH HARIAN LEPAS',
+  'PETANI/PEKEBUN': 'PEDAGANG',
+  'PETANI': 'PEDAGANG',
+  'PEGAWAI NEGERI': 'PNS',
+  'PEGAWAI': 'PEGAWAI ASN',
+  'KARYAWAN': 'KARYAWAN SWASTA',
+  'WIRASWASTI': 'WIRASWASTA',
+  'RUMAH TANGGA': 'MENGURUS RUMAH TANGGA',
+  'IRT': 'MENGURUS RUMAH TANGGA',
+};
+
+// STATUS_PERKAWINAN = ['BELUM MENIKAH', 'KAWIN', 'CERAI HIDUP', 'CERAI MATI']
+const STATUS_KAWIN_VALUES = ['BELUM MENIKAH', 'KAWIN', 'CERAI HIDUP', 'CERAI MATI'] as const;
+const STATUS_KAWIN_MAP: Record<string, string> = {
+  'BELUM MENIKAH': 'BELUM MENIKAH',
+  'KAWIN': 'KAWIN',
+  'CERAI HIDUP': 'CERAI HIDUP',
+  'CERAI MATI': 'CERAI MATI',
+  'KAWIN TERCATAT': 'KAWIN',
+  'KAWIN BELUM TERCATAT': 'KAWIN',
+  'KAWIN TIDAK TERCATAT': 'KAWIN',
+  'BELUM KAWIN': 'BELUM MENIKAH',
+  'CERAI': 'CERAI HIDUP',
+  'MENIKAH': 'KAWIN',
+};
+
+// STATUS_KELUARGA = ['KEPALA KELUARGA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU', 'LAINNYA']
+const STATUS_KELUARGA_VALUES = ['KEPALA KELUARGA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU', 'LAINNYA'] as const;
 
 // ============================================================
-// Stop words — kata yang BUKAN bagian dari nama
+// Stop words — kata BUKAN nama (untuk fallback keyword extraction)
 // ============================================================
 const NAME_STOP_WORDS = new Set([
   'LAKI-LAKI', 'LAKI', 'LAKILAKI', 'PEREMPUAN', 'P',
   'ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'KONGHUCU', 'KATOLIK', 'LAINNYA',
   'SMA', 'SMP', 'SD', 'SLTA', 'SLTP', 'SEDERAJAT', 'SLB',
   'PELAJAR', 'MAHASISWA', 'PNS', 'SOPIR', 'PEDAGANG', 'BURUH',
-  'WIRASWASTA', 'PEGAWAI', 'KARYAWAN', 'TNI', 'POLRI', 'PETANI',
+  'WIRASWASTA', 'WIRASWASTI', 'PEGAWAI', 'KARYAWAN', 'TNI', 'POLRI', 'PETANI',
   'MENGURUS', 'RUMAH', 'TANGGA', 'BELUM', 'TIDAK', 'BEKERJA',
   'KAWIN', 'CERAI', 'MENIKAH', 'WNI', 'WNA', 'TERCATAT',
   'KEPALA', 'KELUARGA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU',
@@ -73,7 +165,10 @@ const NAME_STOP_WORDS = new Set([
   'USTADZ', 'MUBALIGH', 'NEGERI', 'ASN', 'HARIAN', 'LEPAS',
   'PEKEBUN', 'KETENAGAKERJAAN',
   'ALAMAT', 'TEMPAT', 'TANGGAL', 'AGAMA', 'PENDIDIKAN', 'PEKERJAAN',
-  'STATUS', 'KEWARGANEGARAAN', 'JENIS', 'KELAMIN',
+  'STATUS', 'KEWARGANEGARAAN', 'JENIS', 'KELAMIN', 'HUB', 'DALAM',
+  'NAMA', 'NO', 'NIK', 'RT', 'RW', 'KEL', 'DESA', 'KEC',
+  'KABUPATEN', 'PROVINSI',
+  'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII',
 ]);
 
 // ============================================================
@@ -87,41 +182,26 @@ export function preprocessImageForOCR(dataUrl: string): Promise<string> {
       const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
-
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
-
       // Grayscale
       for (let i = 0; i < data.length; i += 4) {
         const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-        data[i] = gray;
-        data[i + 1] = gray;
-        data[i + 2] = gray;
+        data[i] = gray; data[i + 1] = gray; data[i + 2] = gray;
       }
-
-      // Contrast enhancement
-      const contrast = 1.8;
-      const brightness = -10;
+      // Contrast
       for (let i = 0; i < data.length; i += 4) {
-        let val = data[i];
-        val = ((val - 128) * contrast) + 128 + brightness;
+        let val = ((data[i] - 128) * 1.8) + 128 - 10;
         data[i] = Math.max(0, Math.min(255, val));
-        data[i + 1] = data[i];
-        data[i + 2] = data[i];
+        data[i + 1] = data[i]; data[i + 2] = data[i];
       }
-
-      // Binary threshold
-      const threshold = 130;
+      // Binary
       for (let i = 0; i < data.length; i += 4) {
-        const bw = data[i] > threshold ? 255 : 0;
-        data[i] = bw;
-        data[i + 1] = bw;
-        data[i + 2] = bw;
+        const bw = data[i] > 130 ? 255 : 0;
+        data[i] = bw; data[i + 1] = bw; data[i + 2] = bw;
       }
-
       ctx.putImageData(imageData, 0, 0);
       resolve(canvas.toDataURL('image/png'));
     };
@@ -138,121 +218,115 @@ export function parseKKFromOCR(rawText: string): KKParseResult | null {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   const result: KKParseResult = {
-    noKK: '',
-    alamat: '',
-    rt: '',
-    rw: '',
-    desa: '',
-    kecamatan: '',
-    kabupaten: '',
-    provinsi: '',
-    namaKepala: '',
-    namaAyah: '',
-    namaIbu: '',
-    anggota: [],
-    rawText: text.substring(0, 3000),
+    noKK: '', alamat: '', rt: '', rw: '', desa: '',
+    kecamatan: '', kabupaten: '', provinsi: '',
+    namaKepala: '', namaAyah: '', namaIbu: '',
+    anggota: [], rawText: text.substring(0, 3000),
   };
 
-  // 1. Cari No. KK
+  // 1. No. KK
   result.noKK = extractNoKK(text);
   if (!result.noKK) return null;
 
-  // 2. Cari Nama Kepala Keluarga
-  result.namaKepala = extractNamaKepala(text, lines);
+  // 2. Nama Kepala
+  result.namaKepala = extractNamaKepala(lines);
 
-  // 3. Cari Nama Ayah & Nama Ibu (header KK)
-  const ayahIbu = extractNamaAyahIbu(text, lines);
-  result.namaAyah = ayahIbu.ayah;
-  result.namaIbu = ayahIbu.ibu;
+  // 3. Nama Ayah & Ibu
+  const ai = extractNamaAyahIbu(lines);
+  result.namaAyah = ai.ayah;
+  result.namaIbu = ai.ibu;
 
-  // 4. Cari Alamat + RT/RW
-  const alamatInfo = extractAlamat(lines);
-  result.alamat = alamatInfo.alamat;
-  result.rt = alamatInfo.rt;
-  result.rw = alamatInfo.rw;
+  // 4. Alamat + RT/RW
+  const al = extractAlamat(lines);
+  result.alamat = al.alamat;
+  result.rt = al.rt;
+  result.rw = al.rw;
 
-  // 5. Cari Desa, Kecamatan, Kabupaten, Provinsi
-  result.desa = extractFieldValue(lines, ['KELURAHAN', 'KEL/DESA', 'KEL\\/DESA', 'DESA/KELURAHAN', 'DESA', 'KEL DESA', 'KEL/ DESA', 'KEL./ DESA', 'KEL./DESA', 'KEL/DESA', 'KEL. DESA', 'KEL.DESA']);
-  result.kecamatan = extractFieldValue(lines, ['KECAMATAN', 'KEC.', 'KEC']);
-  result.kabupaten = extractFieldValue(lines, ['KABUPATEN/KOTA', 'KABUPATEN', 'KABUPATEN/ KOTA', 'KAB.', 'KABUPATEN / KOTA', 'KAB / KOTA']);
-  result.provinsi = extractFieldValue(lines, ['PROVINSI', 'PROV.', 'PROV']);
+  // 5. Wilayah
+  result.desa = extractField(lines, ['KELURAHAN','KEL/DESA','KEL\\/DESA','DESA/KELURAHAN','DESA','KEL DESA','KEL/ DESA','KEL./DESA','KEL. DESA']);
+  result.kecamatan = extractField(lines, ['KECAMATAN','KEC.','KEC']);
+  result.kabupaten = extractField(lines, ['KABUPATEN/KOTA','KABUPATEN','KAB.','KABUPATEN / KOTA','KAB / KOTA']);
+  result.provinsi = extractField(lines, ['PROVINSI','PROV.','PROV']);
 
-  // 6. Cari anggota keluarga — kirim noKK agar di-exclude
-  result.anggota = extractAllMembers(text, result.noKK);
+  // 6. Anggota — exclude No. KK!
+  result.anggota = extractAllMembers(text, lines, result.noKK);
 
   return result;
 }
 
 // ============================================================
-// Helper: Extract No. KK
+// HEADER EXTRACTION FUNCTIONS
 // ============================================================
-function extractNoKK(text: string): string {
-  const normalized = text.replace(/(\d)\s+(\d)/g, '$1$2');
 
-  const kkPatterns = [
+function extractNoKK(text: string): string {
+  const n = text.replace(/(\d)\s+(\d)/g, '$1$2');
+  for (const p of [
     /NO\s*[.\s]*KK\s*[:\s\-]*\[?\s*(\d{16})\s*\]?/i,
     /N0\s*[.\s]*KK\s*[:\s\-]*\[?\s*(\d{16})\s*\]?/i,
     /NOMOR\s*KK\s*[:\s\-]*\[?\s*(\d{16})\s*\]?/i,
-  ];
-  for (const pat of kkPatterns) {
-    const m = normalized.match(pat);
+  ]) {
+    const m = n.match(p);
     if (m) return m[1];
   }
-
-  // Fallback: 16 digit pertama
-  const all16 = normalized.match(/\d{16}/g);
-  if (all16 && all16.length > 0) return all16[0];
-  return '';
+  const all = n.match(/\d{16}/g);
+  return all?.[0] || '';
 }
 
-// ============================================================
-// Helper: Extract Nama Kepala Keluarga
-// ============================================================
-function extractNamaKepala(text: string, lines: string[]): string {
-  const patterns = [
-    /NAMA\s*(KEPALA)?\s*KELUARGA\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i,
-    /KELUARGA\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i,
-  ];
-  for (const pat of patterns) {
-    const m = text.match(pat);
-    if (m && m[1] && m[1].length > 3) {
-      return cleanName(m[1].trim());
-    }
+function extractNamaKepala(lines: string[]): string {
+  for (const line of lines) {
+    const m = line.match(/NAMA\s*(KEPALA)?\s*KELUARGA\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
+    if (m && m[1] && m[1].trim().length > 2) return cleanName(m[1].trim());
   }
   return '';
 }
 
-// ============================================================
-// Helper: Extract Nama Ayah & Nama Ibu dari header KK
-// ============================================================
-function extractNamaAyahIbu(text: string, lines: string[]): { ayah: string; ibu: string } {
-  let ayah = '';
-  let ibu = '';
-
+function extractNamaAyahIbu(lines: string[]): { ayah: string; ibu: string } {
+  let ayah = '', ibu = '';
   for (const line of lines) {
     if (!ayah) {
-      const mAyah = line.match(/NAMA\s*AYAH\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
-      if (mAyah && mAyah[1].trim().length > 2) {
-        ayah = cleanName(mAyah[1].trim());
-      }
+      const m = line.match(/NAMA\s*AYAH\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
+      if (m) ayah = cleanName(m[1].trim());
     }
     if (!ibu) {
-      const mIbu = line.match(/NAMA\s*IBU\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
-      if (mIbu && mIbu[1].trim().length > 2) {
-        ibu = cleanName(mIbu[1].trim());
-      }
+      const m = line.match(/NAMA\s*IBU\s*[:\s\-]*\[?\s*([A-Z][A-Z\s.'\-]{2,40})\s*\]?/i);
+      if (m) ibu = cleanName(m[1].trim());
     }
     if (ayah && ibu) break;
   }
-
   return { ayah, ibu };
 }
 
-// ============================================================
-// Helper: Bersihkan nama dari suffix bukan nama
-// ============================================================
+function extractAlamat(lines: string[]): { alamat: string; rt: string; rw: string } {
+  for (let i = 0; i < lines.length; i++) {
+    if (/^ALAMAT/i.test(lines[i])) {
+      let alamat = lines[i].replace(/^ALAMAT\s*[:\s\-]*/i, '').trim();
+      if (!alamat && i + 1 < lines.length) alamat = lines[i + 1].trim();
+      let rt = '', rw = '';
+      for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
+        const m = lines[j].match(/(\d{3})\s*[\/\\]\s*(\d{3})/);
+        if (m) { rt = m[1]; rw = m[2]; break; }
+      }
+      return { alamat, rt, rw };
+    }
+  }
+  return { alamat: '', rt: '', rw: '' };
+}
+
+function extractField(lines: string[], keywords: string[]): string {
+  for (const kw of keywords) {
+    const regex = new RegExp(`^${esc(kw)}\\s*[:\\s\\/\\-]*\\s*(.+)$`, 'i');
+    for (const line of lines) {
+      const m = line.match(regex);
+      if (m) return m[1].trim().replace(/,\s*KODE\s*POS\s*\d{5}.*/i, '').trim();
+    }
+  }
+  return '';
+}
+
+function esc(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
 function cleanName(nama: string): string {
-  const stopPatterns = [
+  for (const p of [
     /\s+(LAKI[- ]?LAKI|PEREMPUAN)\s*.*$/i,
     /\s+(ISLAM|KRISTEN|BUDHA|HINDU|KONGHUCU|KATOLIK)\s*.*$/i,
     /\s+\d{2}[\-\/\.]\d{2}[\-\/\.]\d{4}.*$/,
@@ -261,378 +335,382 @@ function cleanName(nama: string): string {
     /\s+(KEPALA\s*KELUARGA|ISTRI|ANAK|MERTUA|MENANTU|CUCU)\s*.*$/i,
     /\s+(PELAJAR|PNS|SOPIR|PEDAGANG|BURUH|WIRASWASTA|PEGAWAI|KARYAWAN|PETANI|MENGURUS).*$/i,
     /\s+(SMA|SMP|SD|SLTA|SLTP|SEDERAJAT|D1|D2|D3|S1|S2|S3|PAKET|DIPLOMA|SARJANA|PASCA).*$/i,
-  ];
-  for (const pat of stopPatterns) {
-    nama = nama.replace(pat, '').trim();
-  }
+  ]) nama = nama.replace(p, '').trim();
   return nama;
 }
 
 // ============================================================
-// Helper: Extract Alamat + RT/RW
+// ANGGOTA EXTRACTION — Label-based per NIK segment
 // ============================================================
-function extractAlamat(lines: string[]): { alamat: string; rt: string; rw: string } {
-  let alamat = '';
-  let rt = '';
-  let rw = '';
 
-  for (let i = 0; i < lines.length; i++) {
-    if (/^ALAMAT/i.test(lines[i])) {
-      alamat = lines[i].replace(/^ALAMAT\s*[:\s\-]*/i, '').trim();
-      if (!alamat && i + 1 < lines.length) {
-        alamat = lines[i + 1].trim();
-      }
-      for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
-        const rtRwMatch = lines[j].match(/(\d{3})\s*[\/\\]\s*(\d{3})/);
-        if (rtRwMatch) {
-          rt = rtRwMatch[1];
-          rw = rtRwMatch[2];
-          break;
-        }
-      }
-      break;
-    }
-  }
-
-  return { alamat, rt, rw };
-}
-
-// ============================================================
-// Helper: Extract field value dari label
-// ============================================================
-function extractFieldValue(lines: string[], keywords: string[]): string {
-  for (const keyword of keywords) {
-    const regex = new RegExp(`^${escapeRegex(keyword)}\\s*[:\\s\\/\\-]*\\s*(.+)$`, 'i');
-    for (let i = 0; i < lines.length; i++) {
-      const m = lines[i].match(regex);
-      if (m) {
-        let val = m[1].trim();
-        val = val.replace(/,\s*KODE\s*POS\s*\d{5}.*/i, '').trim();
-        return val;
-      }
-    }
-  }
-  return '';
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// ============================================================
-// Cari semua anggota keluarga — EXCLUDE No. KK
-// ============================================================
-function extractAllMembers(fullText: string, noKK: string): KKMember[] {
-  const normalized = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const normalizedNoSpaces = normalized.replace(/(\d)\s+(\d)/g, '$1$2');
-
-  const members: KKMember[] = [];
+function extractAllMembers(fullText: string, lines: string[], noKK: string): KKMember[] {
+  const norm = fullText.replace(/(\d)\s+(\d)/g, '$1$2');
 
   // Cari semua NIK 16 digit — EXCLUDE No. KK!
-  const nikMatches: { nik: string; startIdx: number }[] = [];
-  const nikRegex = /\b(\d{16})\b/g;
-  let match;
-  while ((match = nikRegex.exec(normalizedNoSpaces)) !== null) {
-    if (match[1] !== noKK) {  // ← FIX BUG #1: exclude No. KK
-      nikMatches.push({ nik: match[1], startIdx: match.index });
-    }
+  const niks: { nik: string; idx: number }[] = [];
+  const re = /\b(\d{16})\b/g;
+  let m;
+  while ((m = re.exec(norm)) !== null) {
+    if (m[1] !== noKK) niks.push({ nik: m[1], idx: m.index });
   }
+  if (niks.length === 0) return [];
 
-  if (nikMatches.length === 0) return members;
-
-  // Parse setiap NIK segment (dari NIK ini sampai NIK berikutnya)
-  for (let i = 0; i < nikMatches.length; i++) {
-    const nikInfo = nikMatches[i];
-    const nextNikStart = (i + 1 < nikMatches.length) ? nikMatches[i + 1].startIdx : normalizedNoSpaces.length;
-    const segment = normalizedNoSpaces.substring(nikInfo.startIdx, nextNikStart);
-
-    const member = parseMemberFromSegment(segment, nikInfo.nik);
-    if (member && member.namaLengkap) {
-      members.push(member);
-    }
+  const members: KKMember[] = [];
+  for (let i = 0; i < niks.length; i++) {
+    const start = niks[i].idx;
+    const end = (i + 1 < niks.length) ? niks[i + 1].idx : norm.length;
+    const segment = norm.substring(start, end);
+    const member = parseMember(segment, niks[i].nik);
+    if (member) members.push(member);
   }
-
   return members;
 }
 
 // ============================================================
-// Parser per-anggota: KEYWORD-BASED (bukan sequential)
+// Parser per-anggota: LABEL-BASED extraction
 //
-// Alur:
-// 1. Extract SEMUA field yang dikenali (JK, agama, pendidikan, dll)
-//    → urutan di OCR tidak penting, dicari by keyword
-// 2. Hapus semua field yang sudah dikenali dari teks
-// 3. Sisa teks yang berupa huruf kapital = NAMA
+// Label yang muncul di OCR:
+// - "NIK" → 16 digit (sudah diketahui)
+// - "NAMA" → teks nama
+// - "JK" atau "JENIS KELAMIN" → LAKI-LAKI / PEREMPUAN
+// - "TEMPAT LAHIR" atau bagian dari "TTL" → kota
+// - "TANGGAL LAHIR" atau "TGL LAHIR" atau bagian "TTL" → DD-MM-YYYY
+// - "AGAMA" → ISLAM, dll
+// - "PENDIDIKAN" → SMA/SEDERAJAT, dll
+// - "PEKERJAAN" → PNS, dll
+// - "STATUS PERKAWINAN" atau "STATUS" → KAWIN, dll
+// - "STATUS HUB. KELUARGA" atau "HUB. KELUARGA" → KEPALA KELUARGA, dll
+// - "KEWARGANEGARAAN" → WNI / WNA
 // ============================================================
-function parseMemberFromSegment(segment: string, nik: string): KKMember | null {
+function parseMember(segment: string, nik: string): KKMember | null {
   const text = segment.replace(/\s+/g, ' ').trim();
   const nikIdx = text.indexOf(nik);
   if (nikIdx < 0) return null;
 
-  // Teks setelah NIK — normalize spasi di sekitar / dan -
-  let afterNik = text.substring(nikIdx + nik.length).trim();
-  afterNik = afterNik.replace(/\s*\/\s*/g, '/').replace(/\s*[-–—]\s*/g, '-');
+  const afterNik = text.substring(nikIdx + nik.length).trim();
 
   const member: KKMember = {
-    nik,
-    namaLengkap: '',
-    jenisKelamin: '',
-    tempatLahir: '',
-    tanggalLahir: '',
-    agama: '',
-    pendidikan: '',
-    pekerjaan: '',
-    statusPerkawinan: '',
-    statusKeluarga: '',
-    kewarganegaraan: '',
-    namaAyah: '',
-    namaIbu: '',
+    nik, namaLengkap: '', jenisKelamin: '', tempatLahir: '',
+    tanggalLahir: '', agama: '', pendidikan: '', pekerjaan: '',
+    statusPerkawinan: '', statusKeluarga: '', kewarganegaraan: '',
+    namaAyah: '', namaIbu: '',
   };
 
+  // Track which parts of text have been "consumed" by label extraction
+  const consumedRanges: [number, number][] = [];
+
   // ============================================================
-  // PASS 1: Extract semua field yang dikenali (urutan bebas)
+  // 1. NAMA — cari "NAMA" label, atau fallback
   // ============================================================
-
-  // 1. Tanggal Lahir
-  const dateMatch = afterNik.match(/(\d{2})[-/.](\d{2})[-/.](\d{4})/);
-  if (dateMatch) {
-    const [, d, m, y] = dateMatch;
-    const dd = +d, mm = +m, yy = +y;
-    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yy >= 1900 && yy <= 2025) {
-      member.tanggalLahir = `${y}-${m}-${d}`;
-    }
+  const namaLabelMatch = afterNik.match(/\bNAMA\s*[:\s]*([A-Z][A-Z\s.'\-]{2,40})/i);
+  if (namaLabelMatch) {
+    member.namaLengkap = cleanName(namaLabelMatch[1].trim());
+    markConsumed(afterNik, namaLabelMatch.index!, namaLabelMatch[0].length, consumedRanges);
   }
 
-  // 2. Jenis Kelamin
-  if (/LAKI[\s-]*LAKI|LAKILAKI/i.test(afterNik)) {
-    member.jenisKelamin = 'LAKI-LAKI';
-  } else if (/\bPEREMPUAN\b/i.test(afterNik)) {
-    member.jenisKelamin = 'PEREMPUAN';
-  }
-
-  // 3. Agama
-  for (const a of AGAMA_VALUES) {
-    if (new RegExp(`\\b${escapeRegex(a)}\\b`, 'i').test(afterNik)) {
-      member.agama = a;
-      break;
-    }
-  }
-
-  // 4. Pendidikan
-  member.pendidikan = fuzzyMatchList(afterNik, PENDIDIKAN_VALUES);
-
-  // 5. Pekerjaan
-  member.pekerjaan = fuzzyMatchList(afterNik, PEKERJAAN_VALUES);
-
-  // 6. Status Perkawinan
-  if (/KAWIN\s*(BELUM|TIDAK)\s*(TERCATAT)?/i.test(afterNik) || /KAWIN\s*TERCATAT/i.test(afterNik)) {
-    member.statusPerkawinan = 'KAWIN';
+  // ============================================================
+  // 2. JENIS KELAMIN — cari label "JK" atau "JENIS KELAMIN"
+  // ============================================================
+  const jkLabelMatch = afterNik.match(/(?:JENIS\s*KELAMIN|JK)\s*[:\s]*(LAKI[\s\-]*LAKI|LAKILAKI|PEREMPUAN|LAKI|P)/i);
+  if (jkLabelMatch) {
+    const raw = jkLabelMatch[1].toUpperCase().replace(/\s+/g, '');
+    if (raw.includes('LAKI')) member.jenisKelamin = 'LAKI-LAKI';
+    else if (raw.includes('PEREMP')) member.jenisKelamin = 'PEREMPUAN';
+    markConsumed(afterNik, jkLabelMatch.index!, jkLabelMatch[0].length, consumedRanges);
   } else {
-    member.statusPerkawinan = fuzzyMatchList(afterNik, STATUS_KAWIN_VALUES);
+    // Fallback: cari JK value tanpa label
+    if (/LAKI[\s\-]*LAKI|LAKILAKI/i.test(afterNik)) member.jenisKelamin = 'LAKI-LAKI';
+    else if (/\bPEREMPUAN\b/i.test(afterNik)) member.jenisKelamin = 'PEREMPUAN';
   }
 
-  // 7. Status Keluarga
-  if (/KEPALA\s*KELUARGA/i.test(afterNik)) member.statusKeluarga = 'KEPALA KELUARGA';
-  else if (/\bMENANTU\b/i.test(afterNik)) member.statusKeluarga = 'MENANTU';
-  else if (/\bMERTUA\b/i.test(afterNik)) member.statusKeluarga = 'MERTUA';
-  else if (/\bCUCU\b/i.test(afterNik)) member.statusKeluarga = 'CUCU';
-  else if (/\bISTRI\b/i.test(afterNik)) member.statusKeluarga = 'ISTRI';
-  else if (/\bANAK\b/i.test(afterNik)) member.statusKeluarga = 'ANAK';
+  // ============================================================
+  // 3. TTL (Tempat Tanggal Lahir) — format: "KOTA, DD-MM-YYYY"
+  //    atau terpisah: TEMPAT LAHIR = kota, TANGGAL LAHIR = tanggal
+  // ============================================================
+  // Coba format TTL terlebih dahulu: "BOGOR, 01-01-1980"
+  const ttlMatch = afterNik.match(/(?:TTL|TEMPAT\s*\/\s*TANGGAL\s*LAHIR)\s*[:\s]*([A-Z\s.'\-]{2,20})\s*[,.\s]+(\d{2}[\-\/\.]\d{2}[\-\/\.]\d{4})/i);
+  if (ttlMatch) {
+    member.tempatLahir = ttlMatch[1].trim().replace(/[,.\s]+$/, '');
+    const d = ttlMatch[2];
+    const dm = d.match(/(\d{2})[-/.](\d{2})[-/.](\d{4})/);
+    if (dm) {
+      const dd = +dm[1], mm = +dm[2], yy = +dm[3];
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yy >= 1900 && yy <= 2025) {
+        member.tanggalLahir = `${dm[3]}-${dm[2]}-${dm[1]}`;
+      }
+    }
+    markConsumed(afterNik, ttlMatch.index!, ttlMatch[0].length, consumedRanges);
+  }
 
-  // 8. Kewarganegaraan
+  // Cari TEMPAT LAHIR terpisah
+  if (!member.tempatLahir || !member.tanggalLahir) {
+    const tlMatch = afterNik.match(/(?:TEMPAT\s*LAHIR)\s*[:\s]*([A-Z\s.'\-]{2,20})/i);
+    if (tlMatch && !member.tempatLahir) {
+      member.tempatLahir = tlMatch[1].trim().replace(/[,.\s]+$/, '');
+      markConsumed(afterNik, tlMatch.index!, tlMatch[0].length, consumedRanges);
+    }
+    const tgMatch = afterNik.match(/(?:TANGGAL\s*LAHIR|TGL\s*LAHIR)\s*[:\s]*(\d{2}[\-\/\.]\d{2}[\-\/\.]\d{4})/i);
+    if (tgMatch && !member.tanggalLahir) {
+      const dm = tgMatch[1].match(/(\d{2})[-/.](\d{2})[-/.](\d{4})/);
+      if (dm) {
+        const dd = +dm[1], mm = +dm[2], yy = +dm[3];
+        if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yy >= 1900 && yy <= 2025) {
+          member.tanggalLahir = `${dm[3]}-${dm[2]}-${dm[1]}`;
+        }
+      }
+      markConsumed(afterNik, tgMatch.index!, tgMatch[0].length, consumedRanges);
+    }
+  }
+
+  // Fallback tanggal lahir: cari DD-MM-YYYY
+  if (!member.tanggalLahir) {
+    const dm = afterNik.match(/(\d{2})[-/.](\d{2})[-/.](\d{4})/);
+    if (dm) {
+      const dd = +dm[1], mm = +dm[2], yy = +dm[3];
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yy >= 1900 && yy <= 2025) {
+        member.tanggalLahir = `${dm[3]}-${dm[2]}-${dm[1]}`;
+      }
+    }
+  }
+
+  // Fallback tempat lahir: kata sebelum tanggal
+  if (!member.tempatLahir && member.tanggalLahir) {
+    const dateStr = member.tanggalLahir.replace(/-/g, '[-/.]');
+    const dateIdx = afterNik.search(new RegExp(`\\d{2}[-/.]\\d{2}[-/.]${dateStr.substring(0,4)}`));
+    if (dateIdx > 0) {
+      const before = afterNik.substring(Math.max(0, dateIdx - 30), dateIdx).trim();
+      const words = before.split(/\s+/);
+      for (let i = words.length - 1; i >= 0; i--) {
+        const w = words[i].toUpperCase();
+        if (w.length >= 2 && w.length <= 20 && /^[A-Z]+$/.test(w) && !NAME_STOP_WORDS.has(w)) {
+          member.tempatLahir = w;
+          break;
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // 4. AGAMA — cari label atau fallback
+  // ============================================================
+  const agamaLabelMatch = afterNik.match(/AGAMA\s*[:\s]*([A-Z\s\/]+?)(?=\s+(?:PENDIDIKAN|PEKERJAAN|STATUS|HUB|KEWARGA|WNI|WNA|$|\d{2}[-/.]))/i);
+  if (agamaLabelMatch) {
+    member.agama = mapValue(agamaLabelMatch[1].trim().toUpperCase(), AGAMA_MAP);
+    markConsumed(afterNik, agamaLabelMatch.index!, agamaLabelMatch[0].length, consumedRanges);
+  }
+  if (!member.agama) {
+    member.agama = mapValueFromText(afterNik, AGAMA_MAP);
+  }
+
+  // ============================================================
+  // 5. PENDIDIKAN — cari label atau fallback
+  // ============================================================
+  const pendLabelMatch = afterNik.match(/PENDIDIKAN\s*[:\s]*([A-Z0-9\s\/\-]+?)(?=\s+(?:PEKERJAAN|STATUS|HUB|KEWARGA|WNI|WNA|$|\d{2}[-/.]))/i);
+  if (pendLabelMatch) {
+    member.pendidikan = mapValue(pendLabelMatch[1].trim().toUpperCase().replace(/[-\s]+/g, ' '), PENDIDIKAN_MAP);
+    markConsumed(afterNik, pendLabelMatch.index!, pendLabelMatch[0].length, consumedRanges);
+  }
+  if (!member.pendidikan) {
+    member.pendidikan = mapValueFromText(afterNik, PENDIDIKAN_MAP);
+  }
+
+  // ============================================================
+  // 6. PEKERJAAN — cari label atau fallback
+  // ============================================================
+  const pkrjLabelMatch = afterNik.match(/PEKERJAAN\s*[:\s]*([A-Z\s\/\-]+?)(?=\s+(?:STATUS|HUB|KEWARGA|WNI|WNA|$|\d{2}[-/.]))/i);
+  if (pkrjLabelMatch) {
+    member.pekerjaan = mapValue(pkrjLabelMatch[1].trim().toUpperCase(), PEKERJAAN_MAP);
+    markConsumed(afterNik, pkrjLabelMatch.index!, pkrjLabelMatch[0].length, consumedRanges);
+  }
+  if (!member.pekerjaan) {
+    member.pekerjaan = mapValueFromText(afterNik, PEKERJAAN_MAP);
+  }
+
+  // ============================================================
+  // 7. STATUS PERKAWINAN — cari label atau fallback
+  // ============================================================
+  // Label: "STATUS PERKAWINAN" → stop di "STATUS HUB" atau end
+  const skMatch = afterNik.match(/STATUS\s*(?:PERKAWINAN)?\s*[:\s]*(?:KAWIN|BELUM\s*MENIKAH|CERAI\s*HIDUP|CERAI\s*MATI|BELUM\s*KAWIN|KAWIN\s*TERCATAT|KAWIN\s*BELUM\s*TERCATAT)/i);
+  if (skMatch) {
+    member.statusPerkawinan = mapValue(skMatch[0].replace(/^STATUS\s*(?:PERKAWINAN)?\s*[:\s]*/i, '').toUpperCase(), STATUS_KAWIN_MAP);
+    markConsumed(afterNik, skMatch.index!, skMatch[0].length, consumedRanges);
+  }
+  if (!member.statusPerkawinan) {
+    member.statusPerkawinan = mapValueFromText(afterNik, STATUS_KAWIN_MAP);
+  }
+
+  // ============================================================
+  // 8. STATUS KELUARGA — cari label atau fallback
+  // ============================================================
+  const sklMatch = afterNik.match(/(?:STATUS\s*HUB(?:UNGAN)?\s*(?:DALAM)?\s*KELUARGA|HUB(?:UNGAN)?\s*(?:DALAM)?\s*KELUARGA)\s*[:\s]*(KEPALA\s*KELUARGA|ISTRI|ANAK|MERTUA|MENANTU|CUCU|LAINNYA)/i);
+  if (sklMatch) {
+    member.statusKeluarga = sklMatch[1].toUpperCase().replace(/\s+/g, ' ');
+    markConsumed(afterNik, sklMatch.index!, sklMatch[0].length, consumedRanges);
+  }
+  if (!member.statusKeluarga) {
+    if (/KEPALA\s*KELUARGA/i.test(afterNik)) member.statusKeluarga = 'KEPALA KELUARGA';
+    else if (/\bMENANTU\b/i.test(afterNik)) member.statusKeluarga = 'MENANTU';
+    else if (/\bMERTUA\b/i.test(afterNik)) member.statusKeluarga = 'MERTUA';
+    else if (/\bCUCU\b/i.test(afterNik)) member.statusKeluarga = 'CUCU';
+    else if (/\bISTRI\b/i.test(afterNik)) member.statusKeluarga = 'ISTRI';
+    else if (/\bANAK\b/i.test(afterNik)) member.statusKeluarga = 'ANAK';
+  }
+
+  // ============================================================
+  // 9. KEWARGANEGARAAN
+  // ============================================================
   member.kewarganegaraan = /\bWNA\b/i.test(afterNik) ? 'WNA' : 'WNI';
 
-  // 9. Nama Ayah & Ibu
-  const mAyah = afterNik.match(/NAMA\s*AYAH\s*[:\s-]*\[?\s*([A-Z][A-Z\s.'-]{2,30})\s*\]?/i);
-  if (mAyah) member.namaAyah = cleanName(mAyah[1].trim());
-  const mIbu = afterNik.match(/NAMA\s*IBU\s*[:\s-]*\[?\s*([A-Z][A-Z\s.'-]{2,30})\s*\]?/i);
-  if (mIbu) member.namaIbu = cleanName(mIbu[1].trim());
-
   // ============================================================
-  // PASS 2: Bangun daftar phrase yang harus dihapus dari teks
-  // untuk menemukan NAMA dari sisa kata
+  // 10. NAMA — jika belum ketemu dari label, extract dari sisa teks
   // ============================================================
-  const phrasesToRemove: string[] = [];
-
-  // JK phrases (banyak variant OCR)
-  phrasesToRemove.push('LAKI-LAKI', 'LAKI LAKI', 'LAKILAKI', 'LAKI');
-  phrasesToRemove.push('PEREMPUAN');
-
-  // Agama
-  if (member.agama) phrasesToRemove.push(member.agama);
-
-  // Pendidikan — tambahkan variant pecahan kata
-  if (member.pendidikan) {
-    phrasesToRemove.push(member.pendidikan);
-    // Tambahkan kata-kata penyusunnya (misal "SMA/SEDERAJAT" → "SMA", "SEDERAJAT")
-    const pWords = member.pendidikan.split(/[\s\/]+/);
-    for (const pw of pWords) {
-      if (pw.length >= 2) phrasesToRemove.push(pw);
-    }
+  if (!member.namaLengkap) {
+    member.namaLengkap = extractNameFromRemaining(afterNik, consumedRanges);
   }
 
-  // Pekerjaan — tambahkan variant pecahan kata
-  if (member.pekerjaan) {
-    phrasesToRemove.push(member.pekerjaan);
-    const pWords = member.pekerjaan.split(/[\s\/]+/);
-    for (const pw of pWords) {
-      if (pw.length >= 2) phrasesToRemove.push(pw);
-    }
-  }
-
-  // Status Perkawinan
-  if (member.statusPerkawinan) {
-    phrasesToRemove.push(member.statusPerkawinan);
-    // Variant "KAWIN" sering muncul sebagai bagian dari "KAWIN TERCATAT"
-    if (member.statusPerkawinan === 'KAWIN') {
-      phrasesToRemove.push('KAWIN BELUM TERCATAT', 'KAWIN TIDAK TERCATAT', 'KAWIN TERCATAT', 'BELUM TERCATAT', 'TERCATAT');
-    }
-    if (member.statusPerkawinan === 'BELUM MENIKAH') {
-      phrasesToRemove.push('BELUM MENIKAH');
-    }
-    if (member.statusPerkawinan === 'BELUM KAWIN') {
-      phrasesToRemove.push('BELUM KAWIN');
-    }
-    // Tambahkan kata penyusun
-    const skWords = member.statusPerkawinan.split(/\s+/);
-    for (const sw of skWords) {
-      if (sw.length >= 2) phrasesToRemove.push(sw);
-    }
-  }
-
-  // Status Keluarga
-  if (member.statusKeluarga) {
-    phrasesToRemove.push(member.statusKeluarga);
-    const skWords = member.statusKeluarga.split(/\s+/);
-    for (const sw of skWords) {
-      if (sw.length >= 3) phrasesToRemove.push(sw);
-    }
-  }
-
-  // WN
-  phrasesToRemove.push('WNI', 'WNA');
-
-  // Nama Ayah/Ibu label
-  phrasesToRemove.push('NAMA AYAH', 'NAMA IBU');
-
-  // ============================================================
-  // PASS 3: Hapus semua phrase, sisa = NAMA
-  // ============================================================
-  // Urutkan dari yang terpanjang dulu (hindari partial match)
-  phrasesToRemove.sort((a, b) => b.length - a.length);
-
-  let cleaned = afterNik;
-  for (const phrase of phrasesToRemove) {
-    if (!phrase) continue;
-    const regex = new RegExp(escapeRegex(phrase), 'gi');
-    cleaned = cleaned.replace(regex, ' ');
-  }
-
-  // Hapus tanggal
-  cleaned = cleaned.replace(/\d{2}[-/.]\d{2}[-/.]\d{4}/g, ' ');
-  // Hapus angka berdiri sendiri (nomor urut, dll)
-  cleaned = cleaned.replace(/\b\d{1,3}\b/g, ' ');
-  // Hapus karakter non-huruf sisa (, . : ; - = + dll)
-  cleaned = cleaned.replace(/[^A-Za-z\s.'\-]/g, ' ');
-
-  // Ambil kata yang tersisa — harus huruf kapital, panjang >= 2, bukan stop word
-  const remainingWords = cleaned.split(/\s+/).filter(w => w.length >= 2);
-  const nameWords: string[] = [];
-
-  for (const w of remainingWords) {
-    const upper = w.toUpperCase();
-    // Harus huruf kapital semua (atau huruf besar di awal + kecil)
-    if (/^[A-Z][A-Z.'\-]*$/.test(upper) || /^[A-Z][a-z.'\-]+$/.test(w)) {
-      // Bukan stop word
-      if (NAME_STOP_WORDS.has(upper)) continue;
-      // Bukan label field
-      if (/^(NAMA|NO|NIK|RT|RW|ALAMAT)$/i.test(upper)) continue;
-      // Bukan singkatan pendidikan/pekerjaan yang lolos filter
-      if (/^(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)$/i.test(upper)) continue;
-      nameWords.push(upper);
-    }
-  }
-
-  member.namaLengkap = nameWords.join(' ').trim();
-
-  // ============================================================
-  // PASS 4: Tempat Lahir
-  // Kata yang paling dekat dengan tanggal lahir, sebelumnya,
-  // dan bukan stop word + bukan bagian dari nama
-  // ============================================================
-  if (member.tanggalLahir) {
-    const dateRegex = /\d{2}[-/.]\d{2}[-/.]\d{4}/;
-    const dateIdx = afterNik.search(dateRegex);
-    if (dateIdx > 0) {
-      const beforeDate = afterNik.substring(0, dateIdx).trim();
-      const wordsBefore = beforeDate.split(/\s+/);
-      // Cari dari belakang — kata terakhir sebelum tanggal
-      for (let i = wordsBefore.length - 1; i >= 0; i--) {
-        const w = wordsBefore[i].toUpperCase();
-        if (w.length < 2 || w.length > 20) continue;
-        if (!/^[A-Z]+$/.test(w)) continue;
-        if (NAME_STOP_WORDS.has(w)) continue;
-        // Jangan ambil kata yang sudah jadi bagian nama
-        if (member.namaLengkap && member.namaLengkap.includes(w) && w.length <= 4) continue;
-        member.tempatLahir = w;
-        break;
-      }
-    }
-  }
-
-  // ============================================================
-  // Fallback: jika nama kosong, coba ambil kata kapital pertama
-  // ============================================================
+  // Fallback: ambil kata kapital pertama yang bukan stop word
   if (!member.namaLengkap || member.namaLengkap.length < 2) {
     const words = afterNik.split(/\s+/);
-    for (const w of words.slice(0, 4)) {
-      const upper = w.toUpperCase();
-      if (/^[A-Z][A-Z.'\-]+$/.test(upper) && upper.length >= 3 && !NAME_STOP_WORDS.has(upper)) {
-        member.namaLengkap = upper;
+    for (const w of words.slice(0, 5)) {
+      const u = w.toUpperCase();
+      if (/^[A-Z][A-Z.'\-]+$/.test(u) && u.length >= 3 && !NAME_STOP_WORDS.has(u)) {
+        member.namaLengkap = u;
         break;
       }
     }
   }
 
-  // Minimal harus punya nama
   if (!member.namaLengkap || member.namaLengkap.length < 2) return null;
 
-  // Log untuk debug
-  console.log(`[parseKK] NIK ${nik}: nama="${member.namaLengkap}", JK=${member.jenisKelamin}, tLahir=${member.tempatLahir} ${member.tanggalLahir}, agama=${member.agama}, pend=${member.pendidikan}, pekerjaan=${member.pekerjaan}, kawin=${member.statusPerkawinan}, status=${member.statusKeluarga}, WN=${member.kewarganegaraan}`);
+  console.log(`[parseKK] NIK ${nik}: nama="${member.namaLengkap}", JK=${member.jenisKelamin}, TTL=${member.tempatLahir} ${member.tanggalLahir}, agama=${member.agama}, pend=${member.pendidikan}, pkrj=${member.pekerjaan}, kawin=${member.statusPerkawinan}, status=${member.statusKeluarga}, WN=${member.kewarganegaraan}`);
 
   return member;
 }
 
 // ============================================================
-// Helper: Fuzzy match — cocokkan teks dengan daftar nilai
+// Helper: Extract nama dari sisa teks yang belum di-consume
 // ============================================================
-function fuzzyMatchList(text: string, values: string[]): string {
-  let bestMatch = '';
-  let bestScore = 0;
+function extractNameFromRemaining(text: string, consumed: [number, number][]): string {
+  // Hapus semua consumed ranges dari text
+  let remaining = text;
+  // Sort consumed ranges in reverse order
+  const sorted = [...consumed].sort((a, b) => b[0] - a[0]);
+  for (const [start, end] of sorted) {
+    remaining = remaining.substring(0, start) + ' ' + remaining.substring(start + end);
+  }
 
-  for (const val of values) {
-    const valRegex = escapeRegex(val);
+  // Hapus tanggal, angka, karakter non-huruf
+  remaining = remaining.replace(/\d{2}[-/.]\d{2}[-/.]\d{4}/g, ' ');
+  remaining = remaining.replace(/\b\d{1,4}\b/g, ' ');
+  remaining = remaining.replace(/[^A-Za-z\s.'\-]/g, ' ');
 
-    // Exact match — prioritas tertinggi
-    if (new RegExp(`\\b${valRegex}\\b`, 'i').test(text)) {
+  // Hapus semua keyword yang sudah dikenali
+  const allKeywords = [
+    'LAKI-LAKI', 'LAKI LAKI', 'LAKILAKI', 'PEREMPUAN',
+    'ISLAM', 'KRISTEN', 'BUDHA', 'HINDU', 'KONGHUCU', 'KATOLIK',
+    'TIDAK', 'BELUM', 'SEKOLAH', 'TAMAT', 'SD', 'SEDERAJAT', 'SMP', 'SMA',
+    'PAKET', 'SLB', 'D1', 'D2', 'D3', 'S1', 'S2', 'S3',
+    'DIPLOMA', 'SARJANA', 'PASCA',
+    'PELAJAR', 'MAHASISWA', 'PNS', 'SOPIR', 'PEDAGANG', 'BURUH', 'HARIAN', 'LEPAS',
+    'WIRASWASTA', 'WIRASWASTI', 'PEGAWAI', 'ASN', 'KARYAWAN', 'SWASTA',
+    'TNI', 'POLRI', 'PETANI', 'PEKEBUN', 'USTADZ', 'MUBALIGH',
+    'MENGURUS', 'RUMAH', 'TANGGA', 'BEKERJA', 'NEGERI',
+    'KAWIN', 'CERAI', 'MENIKAH', 'HIDUP', 'MATI', 'TERCATAT',
+    'WNI', 'WNA',
+    'KEPALA', 'KELUARGA', 'ISTRI', 'ANAK', 'MERTUA', 'MENANTU', 'CUCU',
+    'AGAMA', 'PENDIDIKAN', 'PEKERJAAN', 'STATUS', 'PERKAWINAN',
+    'HUBUNGAN', 'DALAM', 'KEWARGANEGARAAN', 'JENIS', 'KELAMIN',
+    'NAMA', 'NIK', 'NO', 'TEMPAT', 'TANGGAL', 'LAHIR', 'TTL',
+    'RT', 'RW', 'ALAMAT', 'DESA', 'KEL', 'KEC',
+  ];
+  for (const kw of allKeywords) {
+    const regex = new RegExp(`\\b${esc(kw)}\\b`, 'gi');
+    remaining = remaining.replace(regex, ' ');
+  }
+
+  // Ambil kata yang tersisa — harus huruf, min 2 char, bukan stop word
+  const words = remaining.split(/\s+/).filter(w => w.length >= 2);
+  const nameWords: string[] = [];
+  for (const w of words) {
+    const u = w.toUpperCase();
+    if (/^[A-Z][A-Z.'\-]+$/.test(u) && !NAME_STOP_WORDS.has(u)) {
+      nameWords.push(u);
+    }
+  }
+
+  return nameWords.join(' ').trim();
+}
+
+// ============================================================
+// Helper: Mark range as consumed (for tracking which text is parsed)
+// ============================================================
+function markConsumed(text: string, start: number, length: number, ranges: [number, number][]) {
+  if (start >= 0 && length > 0) {
+    ranges.push([start, Math.min(length, text.length - start)]);
+  }
+}
+
+// ============================================================
+// Helper: Map raw text ke valid value menggunakan mapping table
+// ============================================================
+function mapValue(raw: string, map: Record<string, string>): string {
+  // Cek exact match dulu
+  if (map[raw]) return map[raw];
+
+  // Cek uppercase normalized
+  const upper = raw.toUpperCase().replace(/\s+/g, ' ').trim();
+  if (map[upper]) return map[upper];
+
+  // Cek tanpa spasi/strip
+  const stripped = upper.replace(/[\s\/\-]+/g, '');
+  for (const [key, val] of Object.entries(map)) {
+    if (key.replace(/[\s\/\-]+/g, '') === stripped) return val;
+  }
+
+  // Cek substring — apakah raw mengandung key atau sebaliknya
+  for (const [key, val] of Object.entries(map)) {
+    if (upper.includes(key) || key.includes(upper)) return val;
+    // Jika raw mengandung keyword utama (misal "SEDERAJAT" dalam "SMA/SEDERAJAT")
+    const keywords = key.split(/[\s\/]+/).filter(k => k.length >= 3);
+    for (const kw of keywords) {
+      if (upper.includes(kw)) return val;
+    }
+  }
+
+  return '';
+}
+
+// ============================================================
+// Helper: Cari value dari teks menggunakan mapping table (fallback)
+// ============================================================
+function mapValueFromText(text: string, map: Record<string, string>): string {
+  const upper = text.toUpperCase();
+
+  // Cek dari yang terpanjang dulu (biar spesifik match dulu)
+  const entries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
+  for (const [key, val] of entries) {
+    const keyEsc = esc(key);
+    if (new RegExp(`\\b${keyEsc}\\b`, 'i').test(upper)) {
       return val;
     }
+  }
 
-    // Substring match berdasarkan keyword
-    const keywords = val.split(/[\s\/]+/).filter(k => k.length >= 2);
+  // Cek keyword-based
+  let bestMatch = '';
+  let bestScore = 0;
+  for (const [key, val] of entries) {
+    const keywords = key.split(/[\s\/]+/).filter(k => k.length >= 3);
     if (keywords.length === 0) continue;
-
     let matchCount = 0;
     for (const kw of keywords) {
-      const kwRegex = escapeRegex(kw);
-      if (new RegExp(`\\b${kwRegex}\\b`, 'i').test(text)) matchCount++;
+      if (new RegExp(esc(kw), 'i').test(upper)) matchCount++;
     }
     const score = matchCount / keywords.length;
-    if (score > bestScore) {
+    if (score > bestScore && score >= 0.5) {
       bestScore = score;
       bestMatch = val;
     }
   }
 
-  return bestScore >= 0.5 ? bestMatch : '';
+  return bestMatch;
 }
