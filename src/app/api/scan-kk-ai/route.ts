@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Vercel: 60 detik timeout untuk AI processing
 
 // ============================================================
 // API Route: Scan KK via Puter.js + Google Gemini 2.5 Flash
@@ -73,11 +74,19 @@ export async function POST(request: NextRequest) {
     const puterToken = process.env.PUTER_AUTH_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiZ3VpIiwidmVyc2lvbiI6IjAuMC4wIiwidXVpZCI6ImI0ZTJmYTQ5LTE3YTYtNGNmNi1iZmM2LTJlNjI4ZDRhMTIyMiIsInVzZXJfdWlkIjoiZDZkMzUzODMtMDQ5My00OTExLWFlODYtOWJkNDgzMmEyNzEzIiwiaWF0IjoxNzc3NDA2ODAzfQ.upFccwXCqxpJMgs-NyQFUMiK8BI4_3oI8rKlStEdS_U';
 
     // Pastikan gambar berupa data URL
-    const imageDataUrl = image.startsWith('data:')
+    let imageDataUrl = image.startsWith('data:')
       ? image
       : `data:image/jpeg;base64,${image}`;
 
-    console.log('[Scan KK] Mengirim ke Puter.js + Gemini 2.5 Flash');
+    // Server-side: resize gambar jika terlalu besar (maks 2000px, quality 80%)
+    try {
+      imageDataUrl = await resizeImageServer(imageDataUrl, 2000, 0.8);
+    } catch (resizeErr: any) {
+      console.warn('[Scan KK] Resize gagal, pakai gambar asli:', resizeErr.message);
+    }
+
+    const imgSizeBytes = Math.round((imageDataUrl.length * 3) / 4);
+    console.log('[Scan KK] Mengirim ke Puter.js + Gemini 2.5 Flash, image ~' + Math.round(imgSizeBytes / 1024) + 'KB');
 
     const response = await fetch('https://api.puter.com/puterai/openai/v1/chat/completions', {
       method: 'POST',
@@ -139,7 +148,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!parsed.noKK && (!parsed.anggota || parsed.anggota.length === 0)) {
-      return NextResponse.json({ error: 'AI tidak berhasil membaca KK', fallback: true }, { status: 422 });
+      console.error('[Scan KK] AI tidak berhasil membaca KK. Response:', JSON.stringify(parsed).substring(0, 500));
+      return NextResponse.json(
+        { error: 'AI tidak berhasil membaca KK', fallback: true, aiResponse: JSON.stringify(parsed).substring(0, 1000) },
+        { status: 422 }
+      );
     }
 
     const normalized = normalizeKKData(parsed);
@@ -149,6 +162,42 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('[Scan KK] Error:', error);
     return NextResponse.json({ error: error.message, fallback: true }, { status: 500 });
+  }
+}
+
+// ============================================================
+// Server-side resize gambar menggunakan Canvas (sharp tidak tersedia di Vercel)
+// ============================================================
+async function resizeImageServer(dataUrl: string, maxDim: number, quality: number): Promise<string> {
+  // Parse data URL
+  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return dataUrl;
+
+  const base64Data = matches[2];
+  const buffer = Buffer.from(base64Data, 'base64');
+  const imgSizeKb = buffer.length / 1024;
+
+  // Jika sudah kecil (di bawah 500KB), tidak perlu resize
+  if (imgSizeKb < 500) return dataUrl;
+
+  // Gunakan dynamic import untuk sharp atau canvas
+  // Di Vercel, kita gunakan approach sederhana: decode, resize, encode
+  // Tanpa library tambahan, kita crop/reduce kualitas saja
+  // Import sharp jika tersedia
+  try {
+    // Coba pakai sharp (fast, available di Vercel)
+    const sharp = (await import('sharp')).default;
+    const resized = await sharp(buffer)
+      .resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: Math.round(quality * 100) })
+      .toBuffer();
+    const resizedB64 = resized.toString('base64');
+    console.log(`[Scan KK] Resized: ${Math.round(imgSizeKb)}KB → ${Math.round(resized.length / 1024)}KB`);
+    return `data:image/jpeg;base64,${resizedB64}`;
+  } catch {
+    // Sharp tidak tersedia, gunakan canvas API via node
+    console.log('[Scan KK] sharp tidak tersedia, skip resize');
+    return dataUrl;
   }
 }
 
