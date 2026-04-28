@@ -1,81 +1,125 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createSession, getSession } from '@/lib/auth-server';
 import { db } from '@/lib/db';
-import { initDatabase } from '@/lib/db-init';
-import Database from 'better-sqlite3';
 
-const DB_PATH = process.env.DATABASE_URL?.replace('file:', '') || '/home/z/my-project/db/custom.db';
+export const dynamic = 'force-dynamic';
 
-// Ensure DB is initialized on first login
-function ensureDB() {
-  const sqlite = new Database(DB_PATH, { readonly: false });
+// Ensure auth tables exist in PostgreSQL (self-healing on first request)
+async function ensureAuthTables() {
   try {
-    initDatabase(sqlite);
-  } finally {
-    sqlite.close();
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "RukunTetangga" (
+        "id" SERIAL PRIMARY KEY,
+        "namaRT" TEXT NOT NULL DEFAULT '001',
+        "rw" TEXT NOT NULL DEFAULT '002',
+        "kelurahan" TEXT NOT NULL DEFAULT 'SUKAMAJU',
+        "kecamatan" TEXT NOT NULL DEFAULT 'CIBUNGBULANG',
+        "kabupaten" TEXT NOT NULL DEFAULT 'BOGOR',
+        "provinsi" TEXT NOT NULL DEFAULT 'JAWA BARAT',
+        "alamat" TEXT NOT NULL DEFAULT 'KP. CEMPLANG',
+        "ketuaRT" TEXT,
+        "aktif" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AppUser" (
+        "id" SERIAL PRIMARY KEY,
+        "username" TEXT NOT NULL UNIQUE,
+        "password" TEXT NOT NULL,
+        "nama" TEXT NOT NULL,
+        "role" TEXT NOT NULL DEFAULT 'user',
+        "rtId" INTEGER,
+        "aktif" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch (e) {
+    console.log('Auth tables may already exist:', e);
+  }
+
+  // Seed RT.001 RW.002
+  const existingRT = await db.$queryRawUnsafe<Array<{ id: number }>>(
+    `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
+  );
+  let rt001Id = existingRT[0]?.id;
+  if (!rt001Id) {
+    await db.$executeRawUnsafe(`
+      INSERT INTO "RukunTetangga" ("namaRT", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi", "alamat", "ketuaRT", "aktif")
+      VALUES ('001', '002', 'SUKAMAJU', 'CIBUNGBULANG', 'BOGOR', 'JAWA BARAT', 'KP. CEMPLANG', 'HERMAN GOZALI', true)
+      RETURNING "id"
+    `);
+    const inserted = await db.$queryRawUnsafe<Array<{ id: number }>>(
+      `SELECT id FROM "RukunTetangga" WHERE "namaRT" = '001' AND "rw" = '002' LIMIT 1`
+    );
+    rt001Id = inserted[0]?.id;
+  }
+
+  // Seed herman user
+  const existingHerman = await db.$queryRawUnsafe<Array<{ id: number }>>(
+    `SELECT id FROM "AppUser" WHERE "username" = 'herman' LIMIT 1`
+  );
+  if (!existingHerman.length && rt001Id) {
+    await db.$executeRawUnsafe(`
+      INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
+      VALUES ('herman', 'H3rm4n77', 'HERMAN GOZALI', 'admin', ${rt001Id}, true)
+    `);
+  }
+
+  // Seed superadmin
+  const existingSA = await db.$queryRawUnsafe<Array<{ id: number }>>(
+    `SELECT id FROM "AppUser" WHERE "username" = 'superadmin' LIMIT 1`
+  );
+  if (!existingSA.length) {
+    await db.$executeRawUnsafe(`
+      INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif")
+      VALUES ('superadmin', 'SuperAdmin123!', 'SUPER ADMIN', 'superadmin', NULL, true)
+    `);
   }
 }
 
-function getRTInfo(rtId: number) {
-  const sqlite = new Database(DB_PATH, { readonly: true });
+async function authenticateUser(username: string, password: string) {
   try {
-    const rt = sqlite.prepare(`SELECT * FROM "RukunTetangga" WHERE id = ?`).get(rtId) as any;
-    if (!rt) return null;
-    return {
-      namaRT: rt.namaRT,
-      rw: rt.rw,
-      kelurahan: rt.kelurahan,
-      kecamatan: rt.kecamatan,
-      kabupaten: rt.kabupaten,
-      provinsi: rt.provinsi,
-      alamat: rt.alamat,
-      ketuaRT: rt.ketuaRT,
-    };
-  } finally {
-    sqlite.close();
-  }
-}
+    const user = await db.$queryRawUnsafe<Array<any>>(`
+      SELECT u."id", u."username", u."password", u."nama", u."role", u."rtId", u."aktif",
+        r."namaRT", r."rw", r."kelurahan", r."kecamatan", r."kabupaten", r."provinsi", r."alamat", r."ketuaRT"
+      FROM "AppUser" u
+      LEFT JOIN "RukunTetangga" r ON u."rtId" = r.id
+      WHERE u."username" = $1 AND u."password" = $2 AND u."aktif" = true
+    `, username, password);
 
-function authenticateUser(username: string, password: string) {
-  const sqlite = new Database(DB_PATH, { readonly: true });
-  try {
-    const user = sqlite.prepare(
-      `SELECT u.*, r.namaRT, r.rw, r.kelurahan, r.kecamatan, r.kabupaten, r.provinsi, r.alamat, r.ketuaRT
-       FROM "AppUser" u
-       LEFT JOIN "RukunTetangga" r ON u."rtId" = r.id
-       WHERE u.username = ? AND u.password = ? AND u.aktif = 1`
-    ).get(username, password) as any;
+    if (!user.length) return null;
 
-    if (!user) return null;
-
-    const rtInfo = user.rtId ? {
-      namaRT: user.namaRT,
-      rw: user.rw,
-      kelurahan: user.kelurahan,
-      kecamatan: user.kecamatan,
-      kabupaten: user.kabupaten,
-      provinsi: user.provinsi,
-      alamat: user.alamat,
-      ketuaRT: user.ketuaRT,
+    const u = user[0];
+    const rtInfo = u.rtId ? {
+      namaRT: u.namaRT,
+      rw: u.rw,
+      kelurahan: u.kelurahan,
+      kecamatan: u.kecamatan,
+      kabupaten: u.kabupaten,
+      provinsi: u.provinsi,
+      alamat: u.alamat,
+      ketuaRT: u.ketuaRT,
     } : null;
 
     return {
-      username: user.username,
-      nama: user.nama,
-      role: user.role,
-      rtId: user.rtId,
+      username: u.username,
+      nama: u.nama,
+      role: u.role,
+      rtId: u.rtId,
       rtInfo,
     };
-  } finally {
-    sqlite.close();
+  } catch (e) {
+    console.error('authenticateUser error:', e);
+    return null;
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Ensure DB tables exist
-    ensureDB();
+    await ensureAuthTables();
 
     const { username, password } = await request.json();
 
@@ -83,7 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username dan password wajib diisi' }, { status: 400 });
     }
 
-    const user = authenticateUser(username, password);
+    const user = await authenticateUser(username, password);
 
     if (!user) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
@@ -107,14 +151,14 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set('session_id', token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
     });
 
     return response;
   } catch (error) {
-    console.error(error);
+    console.error('Login error:', error);
     return NextResponse.json({ error: 'Gagal login' }, { status: 500 });
   }
 }
@@ -135,7 +179,7 @@ export async function GET() {
       rtInfo: session.rtInfo,
     });
   } catch (error) {
-    console.error(error);
+    console.error('Session check error:', error);
     return NextResponse.json({ error: 'Gagal memverifikasi sesi' }, { status: 500 });
   }
 }

@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Database from 'better-sqlite3';
+import { db } from '@/lib/db';
 import { requireSuperAdmin, isAuthError } from '@/lib/auth-server';
 
-const DB_PATH = process.env.DATABASE_URL?.replace('file:', '') || '/home/z/my-project/db/custom.db';
 export const dynamic = 'force-dynamic';
-
-function getDB() {
-  return new Database(DB_PATH);
-}
 
 // GET /api/admin/users - List all users (excluding password)
 export async function GET() {
@@ -15,20 +10,15 @@ export async function GET() {
     const auth = await requireSuperAdmin();
     if (isAuthError(auth)) return auth;
 
-    const db = getDB();
-    try {
-      const rows = db.prepare(`
-        SELECT u.id, u.username, u.nama, u.role, u.rtId, u.aktif, u.createdAt, u.updatedAt,
-          r.namaRT, r.rw
-        FROM "AppUser" u
-        LEFT JOIN "RukunTetangga" r ON u.rtId = r.id
-        ORDER BY u.id
-      `).all();
+    const rows = await db.$queryRawUnsafe<Array<any>>(`
+      SELECT u.id, u.username, u.nama, u.role, u."rtId", u.aktif, u."createdAt", u."updatedAt",
+        r."namaRT", r.rw
+      FROM "AppUser" u
+      LEFT JOIN "RukunTetangga" r ON u."rtId" = r.id
+      ORDER BY u.id
+    `);
 
-      return NextResponse.json(rows);
-    } finally {
-      db.close();
-    }
+    return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/admin/users error:', error);
     return NextResponse.json({ error: 'Gagal mengambil data user' }, { status: 500 });
@@ -52,47 +42,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'role harus admin atau user' }, { status: 400 });
     }
 
-    const db = getDB();
-    try {
-      // Check username uniqueness
-      const existingUser = db.prepare('SELECT id FROM "AppUser" WHERE username = ?').get(username) as any;
-      if (existingUser) {
-        return NextResponse.json({ error: 'Username sudah digunakan' }, { status: 409 });
-      }
-
-      // Check rtId exists if provided
-      if (rtId) {
-        const existingRT = db.prepare('SELECT id FROM "RukunTetangga" WHERE id = ?').get(rtId) as any;
-        if (!existingRT) {
-          return NextResponse.json({ error: 'RT tidak ditemukan' }, { status: 404 });
-        }
-      }
-
-      // Insert user
-      const result = db.prepare(`
-        INSERT INTO "AppUser" (username, password, nama, role, rtId, aktif, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `).run(
-        username,
-        password,
-        nama,
-        role || 'user',
-        rtId || null
-      );
-
-      // Return created user without password
-      const created = db.prepare(`
-        SELECT u.id, u.username, u.nama, u.role, u.rtId, u.aktif, u.createdAt, u.updatedAt,
-          r.namaRT, r.rw
-        FROM "AppUser" u
-        LEFT JOIN "RukunTetangga" r ON u.rtId = r.id
-        WHERE u.id = ?
-      `).get(result.lastInsertRowid);
-
-      return NextResponse.json(created, { status: 201 });
-    } finally {
-      db.close();
+    // Check username uniqueness
+    const existingUser = await db.$queryRawUnsafe<Array<{ id: number }>>(
+      `SELECT id FROM "AppUser" WHERE username = $1 LIMIT 1`,
+      username
+    );
+    if (existingUser.length) {
+      return NextResponse.json({ error: 'Username sudah digunakan' }, { status: 409 });
     }
+
+    // Check rtId exists if provided
+    if (rtId) {
+      const existingRT = await db.$queryRawUnsafe<Array<{ id: number }>>(
+        `SELECT id FROM "RukunTetangga" WHERE id = $1 LIMIT 1`,
+        rtId
+      );
+      if (!existingRT.length) {
+        return NextResponse.json({ error: 'RT tidak ditemukan' }, { status: 404 });
+      }
+    }
+
+    // Insert user with RETURNING id
+    const inserted = await db.$queryRawUnsafe<Array<{ id: number }>>(`
+      INSERT INTO "AppUser" ("username", "password", "nama", "role", "rtId", "aktif", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING "id"
+    `,
+      username,
+      password,
+      nama,
+      role || 'user',
+      rtId || null
+    );
+
+    const newId = inserted[0]?.id;
+
+    // Return created user without password
+    const created = await db.$queryRawUnsafe<Array<any>>(`
+      SELECT u.id, u.username, u.nama, u.role, u."rtId", u.aktif, u."createdAt", u."updatedAt",
+        r."namaRT", r.rw
+      FROM "AppUser" u
+      LEFT JOIN "RukunTetangga" r ON u."rtId" = r.id
+      WHERE u.id = $1
+    `, newId);
+
+    return NextResponse.json(created[0] || {}, { status: 201 });
   } catch (error) {
     console.error('POST /api/admin/users error:', error);
     const msg = error instanceof Error ? error.message : String(error);

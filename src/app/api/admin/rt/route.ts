@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Database from 'better-sqlite3';
+import { db } from '@/lib/db';
 import { requireSuperAdmin, isAuthError } from '@/lib/auth-server';
 
-const DB_PATH = process.env.DATABASE_URL?.replace('file:', '') || '/home/z/my-project/db/custom.db';
 export const dynamic = 'force-dynamic';
-
-function getDB() {
-  return new Database(DB_PATH);
-}
 
 // GET /api/admin/rt - List all RTs
 export async function GET() {
@@ -15,20 +10,15 @@ export async function GET() {
     const auth = await requireSuperAdmin();
     if (isAuthError(auth)) return auth;
 
-    const db = getDB();
-    try {
-      const rows = db.prepare(`
-        SELECT r.*,
-          (SELECT COUNT(*) FROM Penduduk WHERE rtId = r.id) as totalPenduduk,
-          (SELECT COUNT(*) FROM AppUser WHERE rtId = r.id AND aktif = 1) as totalUsers
-        FROM "RukunTetangga" r
-        ORDER BY r.id
-      `).all();
+    const rows = await db.$queryRawUnsafe<Array<any>>(`
+      SELECT r.*,
+        (SELECT COUNT(*)::int FROM "Penduduk" WHERE "rtId" = r.id) as "totalPenduduk",
+        (SELECT COUNT(*)::int FROM "AppUser" WHERE "rtId" = r.id AND aktif = true) as "totalUsers"
+      FROM "RukunTetangga" r
+      ORDER BY r.id
+    `);
 
-      return NextResponse.json(rows);
-    } finally {
-      db.close();
-    }
+    return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/admin/rt error:', error);
     return NextResponse.json({ error: 'Gagal mengambil data RT' }, { status: 500 });
@@ -48,28 +38,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'namaRT dan rw wajib diisi' }, { status: 400 });
     }
 
-    const db = getDB();
-    try {
-      const result = db.prepare(`
-        INSERT INTO "RukunTetangga" (namaRT, rw, kelurahan, kecamatan, kabupaten, provinsi, alamat, ketuaRT, aktif, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `).run(
-        namaRT,
-        rw,
-        kelurahan || 'SUKAMAJU',
-        kecamatan || 'CIBUNGBULANG',
-        kabupaten || 'BOGOR',
-        provinsi || 'JAWA BARAT',
-        alamat || 'KP. CEMPLANG',
-        ketuaRT || null
-      );
+    const inserted = await db.$queryRawUnsafe<Array<any>>(`
+      INSERT INTO "RukunTetangga" ("namaRT", "rw", "kelurahan", "kecamatan", "kabupaten", "provinsi", "alamat", "ketuaRT", "aktif", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING *
+    `,
+      namaRT,
+      rw,
+      kelurahan || 'SUKAMAJU',
+      kecamatan || 'CIBUNGBULANG',
+      kabupaten || 'BOGOR',
+      provinsi || 'JAWA BARAT',
+      alamat || 'KP. CEMPLANG',
+      ketuaRT || null
+    );
 
-      const created = db.prepare('SELECT * FROM "RukunTetangga" WHERE id = ?').get(result.lastInsertRowid);
-
-      return NextResponse.json(created, { status: 201 });
-    } finally {
-      db.close();
-    }
+    return NextResponse.json(inserted[0] || {}, { status: 201 });
   } catch (error) {
     console.error('POST /api/admin/rt error:', error);
     const msg = error instanceof Error ? error.message : String(error);

@@ -1,20 +1,11 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getSessions } from '@/app/api/auth/route';
+import { getSession } from '@/lib/auth-server';
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
+    const session = await getSession();
 
-    if (!sessionId) {
-      return NextResponse.json({ authenticated: false, role: null }, { status: 401 });
-    }
-
-    const sessions = getSessions();
-    const session = sessions.get(sessionId);
-    if (!session || session.expires < Date.now()) {
-      sessions.delete(sessionId);
+    if (!session) {
       return NextResponse.json({ authenticated: false, role: null }, { status: 401 });
     }
 
@@ -22,6 +13,9 @@ export async function GET() {
       authenticated: true,
       role: session.role,
       nama: session.nama,
+      username: session.username,
+      rtId: session.rtId,
+      rtInfo: session.rtInfo,
     });
   } catch {
     return NextResponse.json({ authenticated: false, role: null }, { status: 401 });
