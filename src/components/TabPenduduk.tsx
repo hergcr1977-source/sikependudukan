@@ -355,6 +355,29 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     img.src = URL.createObjectURL(file);
   };
 
+  // Kompresi gambar khusus untuk AI scan (max 1024px, JPEG quality 0.65)
+  const compressForAI = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.65));
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  };
+
   const processScanKK = async () => {
     if (!scanPreview) return;
     setScanning(true);
@@ -365,10 +388,13 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         // ========== METODE AI (Cepat & Akurat) ==========
         toast.loading('Menganalisis gambar KK dengan AI...', { id: 'scan-kk-progress' });
 
+        // Kompresi gambar untuk AI (max 1024px, JPEG 0.7 → lebih kecil & cepat)
+        const compressedImage = await compressForAI(scanPreview);
+
         const res = await apiFetch('/api/scan-kk-ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: scanPreview }),
+          body: JSON.stringify({ imageBase64: compressedImage }),
         });
         const json = await res.json();
 
