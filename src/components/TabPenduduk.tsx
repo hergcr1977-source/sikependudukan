@@ -385,6 +385,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       console.log('[Scan KK] OCR raw text:\n', ocrText);
       toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
       parsedData = parseKKFromOCR(ocrText);
+      console.log('[Scan KK] Parsed result:', JSON.stringify(parsedData, null, 2));
 
       if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
         toast.dismiss('scan-kk-progress');
