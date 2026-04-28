@@ -170,6 +170,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [scanRotation, setScanRotation] = useState(0);
   const [scanFlipH, setScanFlipH] = useState(false);
   const [scanFlipV, setScanFlipV] = useState(false);
+  const [scanMethod, setScanMethod] = useState<'ai' | 'tesseract'>('ai');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Rotasi gambar secara real di canvas
@@ -358,36 +359,55 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     if (!scanPreview) return;
     setScanning(true);
     try {
-      // Step 1: Preprocessing gambar (grayscale + kontras + threshold) untuk OCR lebih akurat
-      toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
-      const preprocessed = await preprocessImageForOCR(scanPreview);
+      let parsedData: any;
 
-      // Step 2: OCR dengan Tesseract.js (gratis, tanpa API key, client-side)
-      toast.loading('Membaca teks dari foto KK (Tesseract OCR)...', { id: 'scan-kk-progress' });
-      const Tesseract = await import('tesseract.js');
-      const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
-        logger: (m: any) => {
-          if (m.status === 'recognizing text') {
-            const pct = Math.round((m.progress || 0) * 100);
-            toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
-          }
-        },
-      });
-      const ocrText = result.data.text;
+      if (scanMethod === 'ai') {
+        // ========== METODE AI (Cepat & Akurat) ==========
+        toast.loading('Menganalisis gambar KK dengan AI...', { id: 'scan-kk-progress' });
 
-      if (!ocrText || ocrText.trim().length < 20) {
-        toast.dismiss('scan-kk-progress');
-        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
-        return;
+        const res = await apiFetch('/api/scan-kk-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: scanPreview }),
+        });
+        const json = await res.json();
+
+        if (!res.ok) {
+          toast.dismiss('scan-kk-progress');
+          toast.error(json.error || 'Gagal membaca KK dengan AI. Coba metode Tesseract.');
+          return;
+        }
+
+        parsedData = json.data;
+      } else {
+        // ========== METODE TESSERACT (Offline) ==========
+        toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
+        const preprocessed = await preprocessImageForOCR(scanPreview);
+
+        toast.loading('Membaca teks dari foto KK (Tesseract OCR)...', { id: 'scan-kk-progress' });
+        const Tesseract = await import('tesseract.js');
+        const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
+          logger: (m: any) => {
+            if (m.status === 'recognizing text') {
+              const pct = Math.round((m.progress || 0) * 100);
+              toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
+            }
+          },
+        });
+        const ocrText = result.data.text;
+
+        if (!ocrText || ocrText.trim().length < 20) {
+          toast.dismiss('scan-kk-progress');
+          toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
+          return;
+        }
+
+        console.log('[Scan KK] OCR raw text:\n', ocrText);
+        toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
+        parsedData = parseKKFromOCR(ocrText);
       }
 
-      console.log('[Scan KK] OCR raw text:\n', ocrText);
-
-      // Step 3: Parsing teks OCR (client-side, tanpa API)
-      toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
-      const data = parseKKFromOCR(ocrText);
-
-      if (!data || !data.noKK) {
+      if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
         toast.dismiss('scan-kk-progress');
         toast.error('Gagal mengenali format Kartu Keluarga. Pastikan foto KK jelas dan lengkap.');
         return;
@@ -408,13 +428,13 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       setAddMode('KK_BARU');
 
       // Mapping KK header ke form kepala
-      const kepala = data.anggota.find((a: any) => a.statusKeluarga === 'KEPALA KELUARGA') || data.anggota[0];
-      const otherAnggota = data.anggota.filter((a: any) => a.statusKeluarga !== 'KEPALA KELUARGA');
+      const kepala = parsedData.anggota?.find((a: any) => a.statusKeluarga === 'KEPALA KELUARGA') || parsedData.anggota?.[0];
+      const otherAnggota = parsedData.anggota?.filter((a: any) => a.statusKeluarga !== 'KEPALA KELUARGA') || [];
 
       const mappedKepala: typeof defaultFormData = {
-        noKK: data.noKK || '',
+        noKK: parsedData.noKK || '',
         nik: kepala?.nik || '',
-        namaLengkap: kepala?.namaLengkap || data.namaKepala || '',
+        namaLengkap: kepala?.namaLengkap || parsedData.namaKepala || parsedData.namaKepalaKeluarga || '',
         jenisKelamin: kepala?.jenisKelamin || '',
         statusKeluarga: 'KEPALA KELUARGA',
         tempatLahir: kepala?.tempatLahir || '',
@@ -431,13 +451,13 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         punyaKTP: kepala?.tanggalLahir && hitungUmur(kepala.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
         bantuan: [],
         bpjs: '',
-        alamat: data.alamat || ALAMAT_DEFAULT,
-        rt: data.rt || RT_DEFAULT,
-        rw: data.rw || RW_DEFAULT,
-        kelurahan: data.desa || KELURAHAN_DEFAULT,
-        kecamatan: data.kecamatan || KECAMATAN_DEFAULT,
-        kabupaten: data.kabupaten || KABUPATEN_DEFAULT,
-        provinsi: data.provinsi || PROVINSI_DEFAULT,
+        alamat: parsedData.alamat || ALAMAT_DEFAULT,
+        rt: parsedData.rt || RT_DEFAULT,
+        rw: parsedData.rw || RW_DEFAULT,
+        kelurahan: parsedData.desa || KELURAHAN_DEFAULT,
+        kecamatan: parsedData.kecamatan || KECAMATAN_DEFAULT,
+        kabupaten: parsedData.kabupaten || KABUPATEN_DEFAULT,
+        provinsi: parsedData.provinsi || PROVINSI_DEFAULT,
         keterangan: '',
       };
 
@@ -445,7 +465,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
       // Mapping anggota keluarga lainnya
       const mappedAnggota = otherAnggota.map((a: any) => ({
-        noKK: data.noKK || '',
+        noKK: parsedData.noKK || '',
         nik: a.nik || '',
         namaLengkap: a.namaLengkap || '',
         jenisKelamin: a.jenisKelamin || '',
@@ -464,13 +484,13 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
         punyaKTP: a.tanggalLahir && hitungUmur(a.tanggalLahir).umurTahun >= 19 ? 'PUNYA' : 'BELUM',
         bantuan: [],
         bpjs: '',
-        alamat: data.alamat || ALAMAT_DEFAULT,
-        rt: data.rt || RT_DEFAULT,
-        rw: data.rw || RW_DEFAULT,
-        kelurahan: data.desa || KELURAHAN_DEFAULT,
-        kecamatan: data.kecamatan || KECAMATAN_DEFAULT,
-        kabupaten: data.kabupaten || KABUPATEN_DEFAULT,
-        provinsi: data.provinsi || PROVINSI_DEFAULT,
+        alamat: parsedData.alamat || ALAMAT_DEFAULT,
+        rt: parsedData.rt || RT_DEFAULT,
+        rw: parsedData.rw || RW_DEFAULT,
+        kelurahan: parsedData.desa || KELURAHAN_DEFAULT,
+        kecamatan: parsedData.kecamatan || KECAMATAN_DEFAULT,
+        kabupaten: parsedData.kabupaten || KABUPATEN_DEFAULT,
+        provinsi: parsedData.provinsi || PROVINSI_DEFAULT,
         keterangan: '',
       }));
 
@@ -478,8 +498,9 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       setExpandedAnggota(new Set(mappedAnggota.map((_, i: number) => i)));
       setShowForm(true);
 
-      const namaDisplay = kepala?.namaLengkap || data.namaKepala || 'Kepala Keluarga';
-      toast.success(`KK berhasil dibaca: ${namaDisplay} (${data.anggota.length} anggota). Silakan periksa dan lengkapi data.`);
+      const namaDisplay = kepala?.namaLengkap || parsedData.namaKepala || parsedData.namaKepalaKeluarga || 'Kepala Keluarga';
+      const totalAnggota = parsedData.anggota?.length || 0;
+      toast.success(`KK berhasil dibaca: ${namaDisplay} (${totalAnggota} anggota). Silakan periksa dan lengkapi data.`);
     } catch (err: any) {
       toast.dismiss('scan-kk-progress');
       console.error('[Scan KK] Error:', err);
@@ -2132,10 +2153,39 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
             )}
             <p className="text-sm text-muted-foreground text-center">
               {scanning
-                ? 'Sedang membaca teks dari foto KK. Proses ini memakan waktu beberapa detik...'
-                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat. OCR akan memproses gambar secara otomatis (gratis).'
+                ? scanMethod === 'ai'
+                  ? 'AI sedang menganalisis gambar KK... biasanya 2-5 detik.'
+                  : 'Sedang membaca teks dari foto KK. Proses ini memakan waktu beberapa detik...'
+                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat.'
               }
             </p>
+            {/* Pilihan metode scan */}
+            {!scanning && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setScanMethod('ai')}
+                  className={`flex-1 rounded-lg border-2 p-2 text-center transition-all ${
+                    scanMethod === 'ai'
+                      ? 'border-purple-600 bg-purple-50 text-purple-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold text-sm">AI Vision</div>
+                  <div className="text-xs mt-0.5 opacity-70">Cepat & Akurat (~3 dtk)</div>
+                </button>
+                <button
+                  onClick={() => setScanMethod('tesseract')}
+                  className={`flex-1 rounded-lg border-2 p-2 text-center transition-all ${
+                    scanMethod === 'tesseract'
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold text-sm">Tesseract OCR</div>
+                  <div className="text-xs mt-0.5 opacity-70">Offline (~15-30 dtk)</div>
+                </button>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button
                 onClick={processScanKK}
@@ -2145,12 +2195,12 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
                 {scanning ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Membaca KK...
+                    {scanMethod === 'ai' ? 'Menganalisis...' : 'Membaca KK...'}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
                     <Camera className="h-4 w-4" />
-                    Proses Scan
+                    {scanMethod === 'ai' ? 'Scan dengan AI' : 'Scan dengan OCR'}
                   </span>
                 )}
               </Button>
