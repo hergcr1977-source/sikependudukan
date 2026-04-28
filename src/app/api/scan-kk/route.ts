@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Format gambar tidak valid' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || 'AIzaSyDqkmUR2l61JCPcPUzchi2ng3zNHyDLBfw';
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'API Key belum dikonfigurasi. Hubungi admin untuk menambahkan GEMINI_API_KEY.' },
+        { error: 'API Key belum dikonfigurasi.' },
         { status: 500 }
       );
     }
