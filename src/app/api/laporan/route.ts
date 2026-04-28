@@ -1,23 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP } from '@/lib/utils-kependudukan';
+import { requireAuth, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     const { searchParams } = new URL(request.url);
     const bulan = parseInt(searchParams.get('bulan') || String(new Date().getMonth() + 1));
     const tahun = parseInt(searchParams.get('tahun') || String(new Date().getFullYear()));
 
     const refDate = new Date(tahun, bulan - 1, 15); // mid-month reference
 
-    const allPenduduk = await db.penduduk.findMany();
-    const allSementara = await db.pendudukSementara.findMany();
+    const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
+
+    const allPenduduk = await db.penduduk.findMany({ where: whereRT });
+    const allSementara = await db.pendudukSementara.findMany({ where: whereRT });
     const startDate = new Date(tahun, bulan - 1, 1);
     const endDate = new Date(tahun, bulan, 0, 23, 59, 59);
     const kejadian = await db.kejadian.findMany({
-      where: { tanggal: { gte: startDate, lte: endDate } },
+      where: { ...whereRT, tanggal: { gte: startDate, lte: endDate } },
     });
 
     // Age distribution for left (0-38) and right (39-75+)

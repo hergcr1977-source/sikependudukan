@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { SignJWT, jwtVerify } from 'jose';
 
-// JWT Secret — untuk Vercel serverless, gunakan env variable atau fallback
+// JWT Secret
 function getJWTSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET || 'sikependudukan-rt001-rw002-secret-key-2024';
   return new TextEncoder().encode(secret);
@@ -13,24 +13,45 @@ export interface AuthResult {
   role: string;
   nama: string;
   username: string;
+  rtId: number | null;
+  rtInfo: {
+    namaRT: string;
+    rw: string;
+    kelurahan: string;
+    kecamatan: string;
+    kabupaten: string;
+    provinsi: string;
+    alamat: string;
+    ketuaRT: string | null;
+  } | null;
 }
 
 interface JWTPayload {
   username: string;
   role: string;
   nama: string;
+  rtId: number | null;
+  rtInfo: AuthResult['rtInfo'];
   exp: number;
 }
 
 /**
  * Buat JWT token dan simpan di cookie
  */
-export async function createSession(user: { username: string; role: string; nama: string }): Promise<string> {
+export async function createSession(user: {
+  username: string;
+  role: string;
+  nama: string;
+  rtId: number | null;
+  rtInfo?: AuthResult['rtInfo'];
+}): Promise<string> {
   const secret = getJWTSecret();
   const token = await new SignJWT({
     username: user.username,
     role: user.role,
     nama: user.nama,
+    rtId: user.rtId,
+    rtInfo: user.rtInfo || null,
   } as Omit<JWTPayload, 'exp'>)
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('24h')
@@ -42,7 +63,6 @@ export async function createSession(user: { username: string; role: string; nama
 
 /**
  * Verifikasi session dari cookie dan kembalikan data user.
- * Jika tidak valid, kembalikan null.
  */
 export async function getSession(): Promise<AuthResult | null> {
   try {
@@ -56,9 +76,11 @@ export async function getSession(): Promise<AuthResult | null> {
 
     return {
       success: true,
-      role: (payload as any).role,
-      nama: (payload as any).nama,
-      username: (payload as any).username,
+      role: (payload as any).role || 'user',
+      nama: (payload as any).nama || '',
+      username: (payload as any).username || '',
+      rtId: (payload as any).rtId || null,
+      rtInfo: (payload as any).rtInfo || null,
     };
   } catch {
     return null;
@@ -67,7 +89,6 @@ export async function getSession(): Promise<AuthResult | null> {
 
 /**
  * Wajib login (admin atau user). Untuk GET/read endpoints.
- * Jika belum login, kembalikan 401.
  */
 export async function requireAuth(): Promise<AuthResult | NextResponse> {
   const session = await getSession();
@@ -79,15 +100,28 @@ export async function requireAuth(): Promise<AuthResult | NextResponse> {
 
 /**
  * Wajib admin. Untuk POST/PUT/DELETE endpoints.
- * Jika bukan admin, kembalikan 403.
  */
 export async function requireAdmin(): Promise<AuthResult | NextResponse> {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: 'Belum login' }, { status: 401 });
   }
-  if (session.role !== 'admin') {
+  if (session.role !== 'admin' && session.role !== 'superadmin') {
     return NextResponse.json({ error: 'Akses ditolak. Hanya admin yang dapat mengubah data.' }, { status: 403 });
+  }
+  return session;
+}
+
+/**
+ * Wajib super admin.
+ */
+export async function requireSuperAdmin(): Promise<AuthResult | NextResponse> {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Belum login' }, { status: 401 });
+  }
+  if (session.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Akses ditolak. Hanya super admin.' }, { status: 403 });
   }
   return session;
 }

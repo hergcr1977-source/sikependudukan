@@ -7,8 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============ MULTI-RT: Tabel Referensi ============
+
+model RukunTetangga {
+  id         Int       @id @default(autoincrement())
+  namaRT     String    @default("001")
+  rw         String    @default("002")
+  kelurahan  String    @default("SUKAMAJU")
+  kecamatan  String    @default("CIBUNGBULANG")
+  kabupaten  String    @default("BOGOR")
+  provinsi   String    @default("JAWA BARAT")
+  alamat     String    @default("KP. CEMPLANG")
+  ketuaRT    String?
+  aktif      Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model AppUser {
+  id         Int       @id @default(autoincrement())
+  username   String    @unique
+  password   String
+  nama       String
+  role       String    @default("user") // superadmin, admin, user
+  rtId       Int?
+  aktif      Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// ============ TABEL DATA (dengan rtId) ============
+
 model Penduduk {
   id               Int       @id @default(autoincrement())
+  rtId             Int       @default(1)
   noKK             String
   nik              String    @unique
   namaLengkap      String
@@ -43,6 +75,7 @@ model Penduduk {
 
 model PendudukSementara {
   id                Int       @id @default(autoincrement())
+  rtId              Int       @default(1)
   noKK              String
   nik               String    @unique
   namaLengkap       String
@@ -64,8 +97,8 @@ model PendudukSementara {
   bantuan           String    @default("[]")
   bpjs              String?
   alamat            String    @default("KP. CEMPLANG")
-  rt               String    @default("001")
-  rw               String    @default("002")
+  rt                String    @default("001")
+  rw                String    @default("002")
   kelurahan         String    @default("SUKAMAJU")
   kecamatan         String    @default("CIBUNGBULANG")
   kabupaten         String    @default("BOGOR")
@@ -79,6 +112,7 @@ model PendudukSementara {
 
 model LaporanBulanan {
   id         Int      @id @default(autoincrement())
+  rtId       Int      @default(1)
   bulan      Int
   tahun      Int
   data       String   // JSON string of report data
@@ -86,11 +120,12 @@ model LaporanBulanan {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@unique([bulan, tahun])
+  @@unique([rtId, bulan, tahun])
 }
 
 model Kejadian {
   id            Int       @id @default(autoincrement())
+  rtId          Int       @default(1)
   jenisKejadian String
   noKK          String
   namaLengkap   String
@@ -104,6 +139,7 @@ model Kejadian {
 
 model KasRT {
   id         Int      @id @default(autoincrement())
+  rtId       Int      @default(1)
   tanggal    DateTime
   jenis      String
   jumlah     Int
@@ -114,6 +150,7 @@ model KasRT {
 
 model PenerimaSembako {
   id             Int      @id @default(autoincrement())
+  rtId           Int      @default(1)
   noKK           String
   nik            String
   namaLengkap    String
@@ -130,6 +167,7 @@ model PenerimaSembako {
 
 model SembakoSnapshot {
   id               Int      @id @default(autoincrement())
+  rtId             Int      @default(1)
   nama             String
   jumlahPenerima   Int
   data             String   // JSON array of PenerimaSembako

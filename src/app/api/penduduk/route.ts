@@ -11,11 +11,22 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth();
     if (isAuthError(auth)) return auth;
+
+    // Super admin: bisa lihat semua data (nanti bisa tambah filter ?rtId=X)
+    // Admin/user: hanya data RT sendiri
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const noKK = searchParams.get('noKK') || '';
 
     const where: Record<string, unknown> = {};
+
+    // Filter berdasarkan rtId user (super admin bisa akses semua)
+    if (auth.rtId) {
+      where.rtId = auth.rtId;
+    } else if (searchParams.get('rtId')) {
+      where.rtId = parseInt(searchParams.get('rtId')!);
+    }
+
     if (search) {
       where.OR = [
         { namaLengkap: { contains: search } },
@@ -44,6 +55,10 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
+    if (!auth.rtId) {
+      return NextResponse.json({ error: 'Akun tidak terkait RT manapun' }, { status: 400 });
+    }
+
     const body = await request.json();
     const {
       noKK, nik, namaLengkap, jenisKelamin, statusKeluarga,
@@ -71,7 +86,7 @@ export async function POST(request: NextRequest) {
     let finalKeterangan = keterangan || null;
     if (toUpperCase(statusKeluarga) !== 'KEPALA KELUARGA' && (!keterangan || keterangan.trim() === '')) {
       const kkHead = await db.penduduk.findFirst({
-        where: { noKK, statusKeluarga: 'KEPALA KELUARGA' },
+        where: { noKK, statusKeluarga: 'KEPALA KELUARGA', rtId: auth.rtId },
       });
       if (kkHead && kkHead.keterangan) {
         finalKeterangan = kkHead.keterangan;
@@ -80,6 +95,7 @@ export async function POST(request: NextRequest) {
 
     const penduduk = await db.penduduk.create({
       data: {
+        rtId: auth.rtId,
         noKK,
         nik,
         namaLengkap: toUpperCase(namaLengkap),
@@ -107,13 +123,13 @@ export async function POST(request: NextRequest) {
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs || null,
         desil: desil || null,
-        alamat: toUpperCase(alamat || 'KP. CEMPLANG'),
-        rt: (rt || '001').padStart(3, '0'),
-        rw: (rw || '002').padStart(3, '0'),
-        kelurahan: toUpperCase(kelurahan || 'SUKAMAJU'),
-        kecamatan: toUpperCase(kecamatan || 'CIBUNGBULANG'),
-        kabupaten: toUpperCase(kabupaten || 'BOGOR'),
-        provinsi: toUpperCase(provinsi || 'JAWA BARAT'),
+        alamat: toUpperCase(alamat || auth.rtInfo?.alamat || 'KP. CEMPLANG'),
+        rt: (rt || auth.rtInfo?.namaRT || '001').padStart(3, '0'),
+        rw: (rw || auth.rtInfo?.rw || '002').padStart(3, '0'),
+        kelurahan: toUpperCase(kelurahan || auth.rtInfo?.kelurahan || 'SUKAMAJU'),
+        kecamatan: toUpperCase(kecamatan || auth.rtInfo?.kecamatan || 'CIBUNGBULANG'),
+        kabupaten: toUpperCase(kabupaten || auth.rtInfo?.kabupaten || 'BOGOR'),
+        provinsi: toUpperCase(provinsi || auth.rtInfo?.provinsi || 'JAWA BARAT'),
         keterangan: finalKeterangan,
       },
     });
@@ -166,11 +182,9 @@ export async function PUT(request: NextRequest) {
     if (data.namaPanggilan !== undefined) updateData.namaPanggilan = data.namaPanggilan ? toUpperCase(data.namaPanggilan) : null;
     if (data.noHP !== undefined) updateData.noHP = data.noHP || null;
     if (data.punyaKTP !== undefined) {
-      // Hormati pilihan manual: RUSAK, HILANG, PUNYA tetap disimpan apa adanya
       if (data.punyaKTP === 'RUSAK' || data.punyaKTP === 'HILANG' || data.punyaKTP === 'PUNYA') {
         updateData.punyaKTP = data.punyaKTP;
       } else {
-        // 'BELUM' atau nilai lain — auto-set berdasarkan usia
         const tgl = data.tanggalLahir || (await db.penduduk.findUnique({ where: { id }, select: { tanggalLahir: true } }))?.tanggalLahir;
         if (tgl) {
           const umur = hitungUmur(new Date(tgl));
@@ -180,7 +194,6 @@ export async function PUT(request: NextRequest) {
         }
       }
     }
-    // Jika tanggalLahir diubah DAN punyaKTP tidak diatur manual, otomatis update punyaKTP
     if (data.tanggalLahir !== undefined && data.punyaKTP === undefined) {
       const umur = hitungUmur(new Date(data.tanggalLahir));
       updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
@@ -197,6 +210,12 @@ export async function PUT(request: NextRequest) {
     if (data.provinsi !== undefined) updateData.provinsi = toUpperCase(data.provinsi || 'JAWA BARAT');
     if (data.keterangan !== undefined) updateData.keterangan = data.keterangan || null;
 
+    // Verify the penduduk belongs to the same RT (unless super admin)
+    const existing = await db.penduduk.findUnique({ where: { id } });
+    if (existing && auth.rtId && existing.rtId !== auth.rtId && auth.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Akses ditolak: data bukan milik RT anda' }, { status: 403 });
+    }
+
     let penduduk;
     try {
       penduduk = await db.penduduk.update({
@@ -204,7 +223,6 @@ export async function PUT(request: NextRequest) {
         data: updateData,
       });
     } catch (updateError) {
-      // Fallback: jika kolom desil belum ada di DB, coba tanpa desil
       if (updateData.desil !== undefined) {
         console.warn('Retry update without desil field:', updateError);
         delete updateData.desil;
@@ -234,25 +252,25 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     const deleteAll = searchParams.get('all');
 
-if (deleteAll === 'true') {
-      const countPenduduk = await db.penduduk.count();
-      const countSementara = await db.pendudukSementara.count();
-      const countKejadian = await db.kejadian.count();
-      const countLaporan = await db.laporanBulanan.count();
+    if (deleteAll === 'true') {
+      const whereClause = auth.role !== 'superadmin' && auth.rtId ? { rtId: auth.rtId } : {};
+      const countPenduduk = await db.penduduk.count({ where: whereClause });
+      const countSementara = await db.pendudukSementara.count({ where: whereClause });
+      const countKejadian = await db.kejadian.count({ where: whereClause });
+      const countLaporan = await db.laporanBulanan.count({ where: whereClause });
       let countKasRT = 0;
 
-      await db.penduduk.deleteMany();
-      await db.pendudukSementara.deleteMany();
-      await db.kejadian.deleteMany();
-      await db.laporanBulanan.deleteMany();
+      await db.penduduk.deleteMany({ where: whereClause });
+      await db.pendudukSementara.deleteMany({ where: whereClause });
+      await db.kejadian.deleteMany({ where: whereClause });
+      await db.laporanBulanan.deleteMany({ where: whereClause });
 
-      // Hapus data KasRT via raw SQL (tabel mungkin dibuat manual)
       try {
-        const kasResult = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "KasRT"`);
+        const kasWhere = auth.role !== 'superadmin' && auth.rtId ? ` AND "rtId" = ${auth.rtId}` : '';
+        const kasResult = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "KasRT" WHERE 1=1${kasWhere}`);
         countKasRT = (kasResult as any[])[0]?.count || 0;
-        await db.$executeRawUnsafe(`DELETE FROM "KasRT"`);
+        await db.$executeRawUnsafe(`DELETE FROM "KasRT" WHERE 1=1${kasWhere}`);
       } catch (e) {
-        // Tabel KasRT mungkin belum ada, abaikan
         console.log('KasRT table not found during delete all, skipping.');
       }
 
@@ -268,6 +286,12 @@ if (deleteAll === 'true') {
 
     if (!id) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
+    }
+
+    // Verify ownership
+    const existing = await db.penduduk.findUnique({ where: { id: parseInt(id) } });
+    if (existing && auth.rtId && existing.rtId !== auth.rtId && auth.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     await db.penduduk.delete({ where: { id: parseInt(id) } });

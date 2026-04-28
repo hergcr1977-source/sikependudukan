@@ -12,5 +12,12 @@ export default async function Home() {
     redirect('/login');
   }
 
-  return <HomePage initialRole={session.role} initialNama={session.nama} />;
+  return (
+    <HomePage
+      initialRole={session.role}
+      initialNama={session.nama}
+      initialRtId={session.rtId}
+      initialRtInfo={session.rtInfo}
+    />
+  );
 }

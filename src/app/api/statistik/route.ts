@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP, formatTanggal } from '@/lib/utils-kependudukan';
+import { requireAuth, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const allPenduduk = await db.penduduk.findMany();
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
+    const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
+
+    const allPenduduk = await db.penduduk.findMany({ where: whereRT });
     const allSementara = await db.pendudukSementara.findMany({
-      where: { tanggalKeluar: null },
+      where: { ...whereRT, tanggalKeluar: null },
     });
 
     const kkMap = new Map<string, typeof allPenduduk>();
@@ -43,7 +49,7 @@ export async function GET() {
 
     const wajibKTP = allPenduduk.filter(p => {
       if (!p.tanggalLahir) return false;
-      if (p.punyaKTP === 'PUNYA') return false; // sudah punya KTP, tidak wajib
+      if (p.punyaKTP === 'PUNYA') return false;
       const { umurTahun } = hitungUmur(p.tanggalLahir);
       return umurTahun === 17 || umurTahun === 18;
     });
@@ -74,7 +80,7 @@ export async function GET() {
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     const kejadianBulanIni = await db.kejadian.findMany({
-      where: { tanggal: { gte: startDate, lte: endDate } },
+      where: { ...whereRT, tanggal: { gte: startDate, lte: endDate } },
     });
 
     const kejadianCounts: Record<string, { l: number; p: number }> = {};

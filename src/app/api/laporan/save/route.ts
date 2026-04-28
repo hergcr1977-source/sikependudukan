@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP } from '@/lib/utils-kependudukan';
-import { requireAdmin, isAuthError } from '@/lib/auth-server';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 // POST /api/laporan/save - generate & save laporan for a given month
 export async function POST(request: NextRequest) {
@@ -12,16 +12,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const bulan = parseInt(body.bulan || String(new Date().getMonth() + 1));
     const tahun = parseInt(body.tahun || String(new Date().getFullYear()));
+    const rtId = auth.rtId || 1;
 
-    const reportData = await generateReportData(bulan, tahun);
+    const reportData = await generateReportData(bulan, tahun, rtId);
 
     const keterangan = body.keterangan || '';
 
     const saved = await db.laporanBulanan.upsert({
       where: {
-        bulan_tahun: { bulan, tahun },
+        rtId_bulan_tahun: { rtId, bulan, tahun },
       },
       create: {
+        rtId,
         bulan,
         tahun,
         data: JSON.stringify(reportData),
@@ -49,7 +51,11 @@ export async function POST(request: NextRequest) {
 // GET /api/laporan/save - list all saved laporan
 export async function GET() {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     const saved = await db.laporanBulanan.findMany({
+      where: auth.rtId ? { rtId: auth.rtId } : undefined,
       orderBy: [{ tahun: 'desc' }, { bulan: 'desc' }],
     });
 
@@ -72,23 +78,33 @@ export async function GET() {
 // PATCH /api/laporan/save - update keterangan only
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (isAuthError(auth)) return auth;
+
     const body = await request.json();
     const { id, bulan, tahun, keterangan } = body;
+    const rtId = auth.rtId || 1;
 
     let record;
     if (id) {
       record = await db.laporanBulanan.findUnique({ where: { id } });
     } else if (bulan && tahun) {
       record = await db.laporanBulanan.findUnique({
-        where: { bulan_tahun: { bulan: parseInt(bulan), tahun: parseInt(tahun) } },
+        where: { rtId_bulan_tahun: { rtId, bulan: parseInt(bulan), tahun: parseInt(tahun) } },
       });
+    }
+
+    // Verify ownership for existing records
+    if (record && auth.rtId && record.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     if (!record) {
       // Auto-create if not exists
-      const reportData = await generateReportData(parseInt(String(bulan)), parseInt(String(tahun)));
+      const reportData = await generateReportData(parseInt(String(bulan)), parseInt(String(tahun)), rtId);
       record = await db.laporanBulanan.create({
         data: {
+          rtId,
           bulan: parseInt(String(bulan)),
           tahun: parseInt(String(tahun)),
           data: JSON.stringify(reportData),
@@ -121,6 +137,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID tidak valid' }, { status: 400 });
     }
 
+    const record = await db.laporanBulanan.findUnique({ where: { id } });
+    if (!record) {
+      return NextResponse.json({ error: 'Laporan tidak ditemukan' }, { status: 404 });
+    }
+    if (auth.rtId && record.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
+    }
+
     await db.laporanBulanan.delete({ where: { id } });
     revalidatePath('/api/laporan/save');
     return NextResponse.json({ success: true, message: 'Laporan berhasil dihapus' });
@@ -131,15 +155,17 @@ export async function DELETE(request: NextRequest) {
 }
 
 // Shared report generation logic
-async function generateReportData(bulan: number, tahun: number) {
+async function generateReportData(bulan: number, tahun: number, rtId?: number) {
   const refDate = new Date(tahun, bulan - 1, 15);
 
-  const allPenduduk = await db.penduduk.findMany();
-  const allSementara = await db.pendudukSementara.findMany();
+  const whereRT = rtId ? { rtId } : {};
+
+  const allPenduduk = await db.penduduk.findMany({ where: whereRT });
+  const allSementara = await db.pendudukSementara.findMany({ where: whereRT });
   const startDate = new Date(tahun, bulan - 1, 1);
   const endDate = new Date(tahun, bulan, 0, 23, 59, 59);
   const kejadian = await db.kejadian.findMany({
-    where: { tanggal: { gte: startDate, lte: endDate } },
+    where: { ...whereRT, tanggal: { gte: startDate, lte: endDate } },
   });
 
   const leftAges: { label: string; l: number; p: number }[] = [];

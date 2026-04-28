@@ -4,9 +4,14 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page, auth API, and WA webhook without authentication
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname.startsWith('/api/wa')) {
-    // Add no-cache headers and continue
+  // Allow login, register, auth API, WA webhook, and admin register without authentication
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/wa') ||
+    pathname.startsWith('/api/admin/register')
+  ) {
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.headers.set('Pragma', 'no-cache');
@@ -35,7 +40,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all pages (not static files like _next, favicon, images, etc.)
     '/((?!_next/static|_next/image|favicon.ico|logo.png|sitemap.xml|robots.txt).*)',
   ],
 };

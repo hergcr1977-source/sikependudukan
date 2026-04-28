@@ -45,7 +45,7 @@ export default function LoginPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
-              alt="Logo RT.001 RW.002"
+              alt="Logo Sikependudukan"
               className="w-28 h-28 object-contain"
             />
           </div>
@@ -55,8 +55,7 @@ export default function LoginPage() {
             <h1 className="text-lg font-bold text-emerald-800 tracking-wide">
               SISTEM DATA KEPENDUDUKAN
             </h1>
-            <p className="text-sm font-semibold text-emerald-600">RT.001 RW.002</p>
-            <p className="text-xs text-gray-500">Sukamaju, Cibungbulang, Bogor</p>
+            <p className="text-sm font-semibold text-emerald-600">Multi RT Edition</p>
           </div>
 
           {/* Error */}
@@ -116,9 +115,16 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* Info */}
+          <div className="text-center space-y-1">
+            <p className="text-xs text-gray-500">
+              Lupa akun atau password? Hubungi Super Admin.
+            </p>
+          </div>
+
           {/* Footer */}
           <p className="text-center text-[10px] text-gray-400">
-            © copyright 2026 Herman Gozali S.T. S.Kom.
+            &copy; copyright 2026 Herman Gozali S.T. S.Kom.
           </p>
         </div>
       </div>

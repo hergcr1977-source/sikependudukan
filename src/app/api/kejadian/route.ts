@@ -2,18 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase } from '@/lib/utils-kependudukan';
-import { requireAdmin, isAuthError } from '@/lib/auth-server';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     const { searchParams } = new URL(request.url);
     const jenis = searchParams.get('jenis') || '';
     const bulan = searchParams.get('bulan') || '';
     const tahun = searchParams.get('tahun') || '';
 
     const where: Record<string, unknown> = {};
+    if (auth.rtId) where.rtId = auth.rtId;
     if (jenis) where.jenisKejadian = jenis;
     if (bulan && tahun) {
       const startDate = new Date(parseInt(tahun), parseInt(bulan) - 1, 1);
@@ -79,6 +83,7 @@ export async function POST(request: NextRequest) {
 
       await db.penduduk.create({
         data: {
+          rtId: auth.rtId || 1,
           noKK: String(noKK),
           nik: tempNik,
           namaLengkap: toUpperCase(namaLengkap),
@@ -252,6 +257,7 @@ export async function POST(request: NextRequest) {
 
       await db.penduduk.create({
         data: {
+          rtId: auth.rtId || 1,
           noKK: String(noKK),
           nik: nik ? String(nik) : `PEND_${Date.now()}`,
           namaLengkap: toUpperCase(namaLengkap),
@@ -281,6 +287,7 @@ export async function POST(request: NextRequest) {
     // Simpan kejadian
     const data = await db.kejadian.create({
       data: {
+        rtId: auth.rtId || 1,
         jenisKejadian: toUpperCase(jenisKejadian),
         noKK: noKK || '',
         namaLengkap: toUpperCase(namaLengkap),
@@ -324,6 +331,10 @@ export async function PUT(request: NextRequest) {
     const existingKejadian = await db.kejadian.findUnique({ where: { id } });
     if (!existingKejadian) {
       return NextResponse.json({ error: 'Kejadian tidak ditemukan' }, { status: 404 });
+    }
+    // Verify ownership (superadmin can access all)
+    if (auth.rtId && existingKejadian.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
     const originalNoKK = existingKejadian.noKK;
 
@@ -393,6 +404,14 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
+    }
+
+    const existing = await db.kejadian.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Kejadian tidak ditemukan' }, { status: 404 });
+    }
+    if (auth.rtId && existing.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     await db.kejadian.delete({ where: { id } });

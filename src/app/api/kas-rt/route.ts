@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireAdmin, isAuthError } from '@/lib/auth-server';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 // Helper: pastikan tabel KasRT ada, jika belum buat otomatis
 async function ensureTable() {
@@ -8,6 +8,7 @@ async function ensureTable() {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "KasRT" (
         "id" SERIAL PRIMARY KEY,
+        "rtId" INTEGER NOT NULL DEFAULT 1,
         "tanggal" TIMESTAMP(3) NOT NULL,
         "jenis" TEXT NOT NULL,
         "jumlah" INTEGER NOT NULL,
@@ -24,6 +25,9 @@ async function ensureTable() {
 // GET - ambil semua data kas RT
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     await ensureTable();
 
     const { searchParams } = new URL(request.url);
@@ -34,6 +38,11 @@ export async function GET(request: NextRequest) {
     let sql = 'SELECT * FROM "KasRT" WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
+
+    if (auth.rtId) {
+      sql += ` AND "rtId" = $${paramIndex++}`;
+      params.push(auth.rtId);
+    }
 
     if (bulan && tahun && bulan !== '0') {
       const startDate = new Date(parseInt(tahun), parseInt(bulan) - 1, 1);
@@ -86,10 +95,11 @@ export async function POST(request: NextRequest) {
     await ensureTable();
 
     // Gunakan raw SQL INSERT
-    const result = await db.$queryRawUnsafe(
-      `INSERT INTO "KasRT" ("tanggal", "jenis", "jumlah", "keterangan", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    const result = await db.$queryRawUnsafe<any[]>(
+      `INSERT INTO "KasRT" ("rtId", "tanggal", "jenis", "jumlah", "keterangan", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        RETURNING *`,
+      auth.rtId || 1,
       new Date(tanggal),
       jenis,
       Number(jumlah),

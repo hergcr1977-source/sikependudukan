@@ -2,18 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
-import { requireAdmin, isAuthError } from '@/lib/auth-server';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
 
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (isAuthError(auth)) return auth;
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || '';
     const search = searchParams.get('search') || '';
 
     const where: Record<string, unknown> = {};
+    if (auth.rtId) where.rtId = auth.rtId;
     if (status) where.statusKeterangan = status;
     if (search) {
       where.OR = [
@@ -68,6 +72,7 @@ export async function POST(request: NextRequest) {
 
     const data = await db.pendudukSementara.create({
       data: {
+        rtId: auth.rtId || 1,
         noKK: toUpperCase(noKK || ''),
         nik: toUpperCase(nik || ''),
         namaLengkap: toUpperCase(namaLengkap),
@@ -88,13 +93,13 @@ export async function POST(request: NextRequest) {
         alamatAsal: toUpperCase(alamatAsal),
         bantuan: bantuan ? JSON.stringify(bantuan) : '[]',
         bpjs: bpjs ? bpjs.toUpperCase() : null,
-        alamat: toUpperCase(alamat || 'KP. CEMPLANG'),
-        rt: (rt || '001').padStart(3, '0'),
-        rw: (rw || '002').padStart(3, '0'),
-        kelurahan: toUpperCase(kelurahan || 'SUKAMAJU'),
-        kecamatan: toUpperCase(kecamatan || 'CIBUNGBULANG'),
-        kabupaten: toUpperCase(kabupaten || 'BOGOR'),
-        provinsi: toUpperCase(provinsi || 'JAWA BARAT'),
+        alamat: toUpperCase(alamat || auth.rtInfo?.alamat || 'KP. CEMPLANG'),
+        rt: (rt || auth.rtInfo?.namaRT || '001').padStart(3, '0'),
+        rw: (rw || auth.rtInfo?.rw || '002').padStart(3, '0'),
+        kelurahan: toUpperCase(kelurahan || auth.rtInfo?.kelurahan || 'SUKAMAJU'),
+        kecamatan: toUpperCase(kecamatan || auth.rtInfo?.kecamatan || 'CIBUNGBULANG'),
+        kabupaten: toUpperCase(kabupaten || auth.rtInfo?.kabupaten || 'BOGOR'),
+        provinsi: toUpperCase(provinsi || auth.rtInfo?.provinsi || 'JAWA BARAT'),
         tanggalMasuk: new Date(tanggalMasuk),
         tanggalKeluar: tanggalKeluar ? new Date(tanggalKeluar) : null,
         keterangan: keterangan || null,
@@ -119,6 +124,15 @@ export async function PUT(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
+    }
+
+    // Verify ownership
+    const existing = await db.pendudukSementara.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Data tidak ditemukan' }, { status: 404 });
+    }
+    if (auth.rtId && existing.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     // Validasi NIK dan NoKK saat update
@@ -194,6 +208,14 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
+    }
+
+    const existing = await db.pendudukSementara.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Data tidak ditemukan' }, { status: 404 });
+    }
+    if (auth.rtId && existing.rtId !== auth.rtId) {
+      return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
     await db.pendudukSementara.delete({ where: { id } });
