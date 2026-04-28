@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const base64Data = processedImage.split(',')[1];
 
     // Gunakan Google Gemini API
-    const model = 'gemini-2.0-flash';
+    const model = 'gemini-1.5-flash';
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const prompt = `Baca seluruh isi dokumen Kartu Keluarga Indonesia ini. Ekstrak SEMUA data dalam format JSON yang presisi.
@@ -103,7 +103,6 @@ Hanya output JSON saja, tanpa komentar atau penjelasan.`;
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
       },
     };
 
