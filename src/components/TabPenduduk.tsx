@@ -363,19 +363,24 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
           console.log('[Scan KK] AI result:', JSON.stringify(parsedData, null, 2));
         } else {
           toast.dismiss('scan-kk-progress');
-          toast.error('AI gagal membaca KK: ' + (json.error || 'Unknown error'));
+          // Tampilkan detail error AI untuk debugging
+          const detail = json.aiResponse ? '\nDetail AI: ' + json.aiResponse.substring(0, 200) : '';
+          toast.error('AI gagal membaca KK: ' + (json.error || 'Unknown error') + detail, { duration: 8000 });
+          console.error('[Scan KK] AI error detail:', json);
           return;
         }
       } else {
         const errData = await res.json().catch(() => ({ error: 'Unknown' }));
         toast.dismiss('scan-kk-progress');
-        toast.error('Gagal membaca KK: ' + (errData.error || 'Server error'));
+        const detail = errData.aiResponse ? '\nDetail AI: ' + errData.aiResponse.substring(0, 200) : '';
+        toast.error('Gagal membaca KK: ' + (errData.error || 'Server error') + detail, { duration: 8000 });
+        console.error('[Scan KK] Server error:', errData);
         return;
       }
 
       if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
         toast.dismiss('scan-kk-progress');
-        toast.error('Gagal mengenali format Kartu Keluarga. Pastikan foto KK jelas dan lengkap.');
+        toast.error('Gagal mengenali format KK. Data: noKK=' + (parsedData?.noKK || '-') + ' anggota=' + (parsedData?.anggota?.length || 0), { duration: 8000 });
         return;
       }
 
