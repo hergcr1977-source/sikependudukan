@@ -368,6 +368,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       toast.loading('Membaca teks dari foto KK (OCR)...', { id: 'scan-kk-progress' });
       const Tesseract = await import('tesseract.js');
       const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
+        psm: 6, // uniform block of text — lebih cocok untuk dokumen terstruktur seperti KK
         logger: (m: any) => {
           if (m.status === 'recognizing text') {
             const pct = Math.round((m.progress || 0) * 100);

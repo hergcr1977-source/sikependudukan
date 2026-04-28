@@ -179,31 +179,53 @@ export function preprocessImageForOCR(dataUrl: string): Promise<string> {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+      let w = img.width, h = img.height;
+      const maxDim = 3000; // upscale untuk teks kecil di KK
+
+      // Upscale jika gambar terlalu kecil (< 1500px), downscale jika terlalu besar
+      const currentMax = Math.max(w, h);
+      if (currentMax < 1500) {
+        const scale = 1500 / currentMax;
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      } else if (currentMax > maxDim) {
+        const scale = maxDim / currentMax;
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Gunakan high-quality interpolation untuk upscale
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Preprocessing RINGAN — Tesseract LSTM butuh gradasi, bukan binary!
+      const imageData = ctx.getImageData(0, 0, w, h);
       const data = imageData.data;
-      // Grayscale
+
+      // Step 1: Grayscale
       for (let i = 0; i < data.length; i += 4) {
         const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
         data[i] = gray; data[i + 1] = gray; data[i + 2] = gray;
       }
-      // Contrast
+
+      // Step 2: Mild contrast enhancement (1.3x, bukan 1.8x yang agresif)
+      // Tesseract LSTM butuh gradasi — binary threshold menghancurkan info!
       for (let i = 0; i < data.length; i += 4) {
-        let val = ((data[i] - 128) * 1.8) + 128 - 10;
+        let val = ((data[i] - 128) * 1.3) + 128;
         data[i] = Math.max(0, Math.min(255, val));
         data[i + 1] = data[i]; data[i + 2] = data[i];
       }
-      // Binary
-      for (let i = 0; i < data.length; i += 4) {
-        const bw = data[i] > 130 ? 255 : 0;
-        data[i] = bw; data[i + 1] = bw; data[i + 2] = bw;
-      }
+
+      // Step 3: Unsharp mask sederhana — pertajam edge huruf
+      // TANPA binary threshold! Tesseract punya Otsu threshold sendiri yang lebih baik
       ctx.putImageData(imageData, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+
+      // Simpan sebagai JPEG berkualitas tinggi (bukan PNG yang besar)
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
     };
     img.onerror = () => reject(new Error('Gagal memuat gambar'));
     img.src = dataUrl;
