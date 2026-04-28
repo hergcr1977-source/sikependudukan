@@ -170,7 +170,6 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [scanRotation, setScanRotation] = useState(0);
   const [scanFlipH, setScanFlipH] = useState(false);
   const [scanFlipV, setScanFlipV] = useState(false);
-  const [scanMethod, setScanMethod] = useState<'ai' | 'tesseract'>('ai');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Rotasi gambar secara real di canvas
@@ -355,83 +354,37 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     img.src = URL.createObjectURL(file);
   };
 
-  // Kompresi gambar khusus untuk AI scan (max 1024px, JPEG quality 0.65)
-  const compressForAI = (dataUrl: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 1024;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else { w = Math.round(w * MAX / h); h = MAX; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.65));
-      };
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-  };
-
   const processScanKK = async () => {
     if (!scanPreview) return;
     setScanning(true);
     try {
       let parsedData: any;
 
-      if (scanMethod === 'ai') {
-        // ========== METODE AI (Cepat & Akurat) ==========
-        toast.loading('Menganalisis gambar KK dengan AI...', { id: 'scan-kk-progress' });
+      // ========== METODE TESSERACT (Offline, Gratis) ==========
+      toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
+      const preprocessed = await preprocessImageForOCR(scanPreview);
 
-        // Kompresi gambar untuk AI (max 1024px, JPEG 0.7 → lebih kecil & cepat)
-        const compressedImage = await compressForAI(scanPreview);
+      toast.loading('Membaca teks dari foto KK (OCR)...', { id: 'scan-kk-progress' });
+      const Tesseract = await import('tesseract.js');
+      const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
+        logger: (m: any) => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round((m.progress || 0) * 100);
+            toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
+          }
+        },
+      });
+      const ocrText = result.data.text;
 
-        const res = await apiFetch('/api/scan-kk-ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: compressedImage }),
-        });
-        const json = await res.json();
-
-        if (!res.ok) {
-          toast.dismiss('scan-kk-progress');
-          toast.error(json.error || 'Gagal membaca KK dengan AI. Coba metode Tesseract.');
-          return;
-        }
-
-        parsedData = json.data;
-      } else {
-        // ========== METODE TESSERACT (Offline) ==========
-        toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
-        const preprocessed = await preprocessImageForOCR(scanPreview);
-
-        toast.loading('Membaca teks dari foto KK (Tesseract OCR)...', { id: 'scan-kk-progress' });
-        const Tesseract = await import('tesseract.js');
-        const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
-          logger: (m: any) => {
-            if (m.status === 'recognizing text') {
-              const pct = Math.round((m.progress || 0) * 100);
-              toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
-            }
-          },
-        });
-        const ocrText = result.data.text;
-
-        if (!ocrText || ocrText.trim().length < 20) {
-          toast.dismiss('scan-kk-progress');
-          toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
-          return;
-        }
-
-        console.log('[Scan KK] OCR raw text:\n', ocrText);
-        toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
-        parsedData = parseKKFromOCR(ocrText);
+      if (!ocrText || ocrText.trim().length < 20) {
+        toast.dismiss('scan-kk-progress');
+        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
+        return;
       }
+
+      console.log('[Scan KK] OCR raw text:\n', ocrText);
+      toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
+      parsedData = parseKKFromOCR(ocrText);
 
       if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
         toast.dismiss('scan-kk-progress');
@@ -2179,39 +2132,10 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
             )}
             <p className="text-sm text-muted-foreground text-center">
               {scanning
-                ? scanMethod === 'ai'
-                  ? 'AI sedang menganalisis gambar KK... biasanya 2-5 detik.'
-                  : 'Sedang membaca teks dari foto KK. Proses ini memakan waktu beberapa detik...'
-                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat.'
+                ? 'Sedang membaca teks dari foto KK. Proses ini memakan waktu beberapa detik...'
+                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat. OCR akan memproses gambar secara otomatis (gratis, offline).'
               }
             </p>
-            {/* Pilihan metode scan */}
-            {!scanning && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setScanMethod('ai')}
-                  className={`flex-1 rounded-lg border-2 p-2 text-center transition-all ${
-                    scanMethod === 'ai'
-                      ? 'border-purple-600 bg-purple-50 text-purple-700'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="font-semibold text-sm">AI Vision</div>
-                  <div className="text-xs mt-0.5 opacity-70">Cepat & Akurat (~3 dtk)</div>
-                </button>
-                <button
-                  onClick={() => setScanMethod('tesseract')}
-                  className={`flex-1 rounded-lg border-2 p-2 text-center transition-all ${
-                    scanMethod === 'tesseract'
-                      ? 'border-blue-600 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="font-semibold text-sm">Tesseract OCR</div>
-                  <div className="text-xs mt-0.5 opacity-70">Offline (~15-30 dtk)</div>
-                </button>
-              </div>
-            )}
             <div className="flex gap-2">
               <Button
                 onClick={processScanKK}
@@ -2221,12 +2145,12 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
                 {scanning ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {scanMethod === 'ai' ? 'Menganalisis...' : 'Membaca KK...'}
+                    Membaca KK...
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
                     <Camera className="h-4 w-4" />
-                    {scanMethod === 'ai' ? 'Scan dengan AI' : 'Scan dengan OCR'}
+                    Proses Scan
                   </span>
                 )}
               </Button>
