@@ -43,6 +43,7 @@ import {
 import { hitungUmur, isWajibKTP, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
 import * as XLSX from 'xlsx';
+import { preprocessImageForOCR, parseKKFromOCR } from '@/lib/parse-kk';
 
 interface Penduduk {
   id: number;
@@ -282,34 +283,42 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     if (!scanPreview) return;
     setScanning(true);
     try {
-      // Step 1: OCR dengan Tesseract.js (gratis, tanpa API key)
+      // Step 1: Preprocessing gambar (grayscale + kontras + threshold) untuk OCR lebih akurat
+      toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
+      const preprocessed = await preprocessImageForOCR(scanPreview);
+
+      // Step 2: OCR dengan Tesseract.js (gratis, tanpa API key, client-side)
+      toast.loading('Membaca teks dari foto KK (Tesseract OCR)...', { id: 'scan-kk-progress' });
       const Tesseract = await import('tesseract.js');
-      const result = await Tesseract.recognize(scanPreview, 'ind+eng', {
-        logger: () => {},
+      const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
+        logger: (m: any) => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round((m.progress || 0) * 100);
+            toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
+          }
+        },
       });
       const ocrText = result.data.text;
 
       if (!ocrText || ocrText.trim().length < 20) {
-        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas.');
+        toast.dismiss('scan-kk-progress');
+        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
         return;
       }
 
-      console.log('[Scan KK] OCR result:', ocrText.substring(0, 300));
+      console.log('[Scan KK] OCR raw text:\n', ocrText);
 
-      // Step 2: Kirim teks ke API untuk parsing
-      const res = await apiFetch('/api/parse-kk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: ocrText }),
-      });
-      const json = await res.json();
+      // Step 3: Parsing teks OCR (client-side, tanpa API)
+      toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
+      const data = parseKKFromOCR(ocrText);
 
-      if (!res.ok) {
-        toast.error(json.error || 'Gagal membaca format KK');
+      if (!data || !data.noKK) {
+        toast.dismiss('scan-kk-progress');
+        toast.error('Gagal mengenali format Kartu Keluarga. Pastikan foto KK jelas dan lengkap.');
         return;
       }
 
-      const data = json.data;
+      toast.dismiss('scan-kk-progress');
 
       // Buka form KK Baru
       setShowScanDialog(false);
@@ -326,7 +335,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       const mappedKepala: typeof defaultFormData = {
         noKK: data.noKK || '',
         nik: kepala?.nik || '',
-        namaLengkap: kepala?.namaLengkap || '',
+        namaLengkap: kepala?.namaLengkap || data.namaKepala || '',
         jenisKelamin: kepala?.jenisKelamin || '',
         statusKeluarga: 'KEPALA KELUARGA',
         tempatLahir: kepala?.tempatLahir || '',
@@ -390,9 +399,12 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       setExpandedAnggota(new Set(mappedAnggota.map((_, i: number) => i)));
       setShowForm(true);
 
-      toast.success(`KK berhasil dibaca: ${data.namaKepalaKeluarga || kepala?.namaLengkap || ''} (${otherAnggota.length} anggota)`);
-    } catch {
-      toast.error('Gagal memproses gambar KK');
+      const namaDisplay = kepala?.namaLengkap || data.namaKepala || 'Kepala Keluarga';
+      toast.success(`KK berhasil dibaca: ${namaDisplay} (${data.anggota.length} anggota). Silakan periksa dan lengkapi data.`);
+    } catch (err: any) {
+      toast.dismiss('scan-kk-progress');
+      console.error('[Scan KK] Error:', err);
+      toast.error('Gagal memproses gambar KK: ' + (err.message || 'Error tidak diketahui'));
     } finally {
       setScanning(false);
     }
@@ -1995,8 +2007,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
             )}
             <p className="text-sm text-muted-foreground text-center">
               {scanning
-                ? 'Sedang membaca teks dari foto KK...'
-                : 'Pastikan foto KK jelas dan tidak blur. Tesseract OCR akan membaca teks secara otomatis (gratis, tanpa API key).'
+                ? 'Sedang membaca teks dari foto KK. Proses ini memakan waktu beberapa detik...'
+                : 'Pastikan foto KK jelas, tidak blur, dan semua teks terlihat. OCR akan memproses gambar secara otomatis (gratis).'
               }
             </p>
             <div className="flex gap-2">
