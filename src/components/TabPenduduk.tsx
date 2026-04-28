@@ -42,6 +42,7 @@ import {
 } from '@/lib/constants';
 import { hitungUmur, isWajibKTP, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
+import { ComboInput } from '@/components/ui/combo-input';
 import * as XLSX from 'xlsx';
 
 interface Penduduk {
@@ -461,12 +462,76 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
         return '';
       };
 
+      // Mapping nilai AI ke nilai standar (jika cocok). Jika tidak cocok, kembalikan as-is.
+      const mapOrKeep = (rawVal: any, mapping: Record<string, string>): string => {
+        if (!rawVal) return '';
+        const u = String(rawVal).toUpperCase().trim();
+        if (mapping[u]) return mapping[u];
+        const n = u.replace(/\s+/g, ' ').trim();
+        if (mapping[n]) return mapping[n];
+        for (const [k, v] of Object.entries(mapping)) {
+          if (n.includes(k) || k.includes(n)) return v;
+        }
+        // Tidak cocok — kembalikan nilai asli dari AI
+        return u;
+      };
+
+      const PEND_MAP: Record<string, string> = {
+        'TIDAK/BELUM SEKOLAH': 'TIDAK/BELUM SEKOLAH', 'BELUM TAMAT SD/SEDERAJAT': 'BELUM TAMAT SD/SEDERAJAT',
+        'TIDAK TAMAT SD/SEDERAJAT': 'TIDAK TAMAT SD/SEDERAJAT', 'SD/SEDERAJAT': 'SD/SEDERAJAT',
+        'SMP/SEDERAJAT': 'SMP/SEDERAJAT', 'SMA/SEDERAJAT': 'SMA/SEDERAJAT',
+        'SLTP/SEDERAJAT': 'SMP/SEDERAJAT', 'SLTA/SEDERAJAT': 'SMA/SEDERAJAT',
+        'PAKET A': 'PAKET A', 'PAKET B': 'PAKET B', 'PAKET C': 'PAKET C', 'SLB': 'SLB',
+        'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3',
+        'TAMAT SD/SEDERAJAT': 'SD/SEDERAJAT', 'TAMAT SMP/SEDERAJAT': 'SMP/SEDERAJAT',
+        'TAMAT SMA/SEDERAJAT': 'SMA/SEDERAJAT', 'TAMAT SD': 'SD/SEDERAJAT',
+        'TAMAT SMP': 'SMP/SEDERAJAT', 'TAMAT SMA': 'SMA/SEDERAJAT',
+        'SD': 'SD/SEDERAJAT', 'SMP': 'SMP/SEDERAJAT', 'SMA': 'SMA/SEDERAJAT',
+        'DIPLOMA': 'D3', 'SARJANA': 'S1', 'MAGISTER': 'S2', 'PASCA SARJANA': 'S2', 'DOKTOR': 'S3',
+        'TIDAK SEKOLAH': 'TIDAK/BELUM SEKOLAH', 'BELUM SEKOLAH': 'TIDAK/BELUM SEKOLAH',
+      };
+
+      const PEK_MAP: Record<string, string> = {
+        'PELAJAR/MAHASISWA': 'PELAJAR/MAHASISWA', 'PELAJAR': 'PELAJAR/MAHASISWA',
+        'MAHASISWA': 'PELAJAR/MAHASISWA', 'PNS': 'PNS', 'SOPIR': 'SOPIR',
+        'USTADZ/MUBALIGH': 'USTADZ/MUBALIGH', 'PEDAGANG': 'PEDAGANG',
+        'BELUM/TIDAK BEKERJA': 'BELUM/TIDAK BEKERJA', 'BURUH HARIAN LEPAS': 'BURUH HARIAN LEPAS',
+        'MENGURUS RUMAH TANGGA': 'MENGURUS RUMAH TANGGA', 'WIRASWASTA': 'WIRASWASTA',
+        'PEGAWAI ASN': 'PEGAWAI ASN', 'KARYAWAN SWASTA': 'KARYAWAN SWASTA',
+        'TNI': 'TNI', 'POLRI': 'POLRI', 'KARYAWAN': 'KARYAWAN SWASTA',
+        'IRT': 'MENGURUS RUMAH TANGGA', 'PETANI': 'PEDAGANG', 'WIRASWASTI': 'WIRASWASTA',
+      };
+
+      const SK_MAP: Record<string, string> = {
+        'BELUM MENIKAH': 'BELUM MENIKAH', 'KAWIN': 'KAWIN',
+        'CERAI HIDUP': 'CERAI HIDUP', 'CERAI MATI': 'CERAI MATI',
+        'BELUM KAWIN': 'BELUM MENIKAH', 'KAWIN TERCATAT': 'KAWIN',
+        'KAWIN BELUM TERCATAT': 'KAWIN', 'KAWIN TIDAK TERCATAT': 'KAWIN',
+      };
+
+      const AGAMA_MAP: Record<string, string> = {
+        'ISLAM': 'ISLAM', 'KRISTEN': 'KRISTEN', 'BUDHA': 'BUDHA',
+        'HINDU': 'HINDU', 'LAINNYA': 'LAINNYA',
+        'KONGHUCU': 'LAINNYA', 'KATOLIK': 'KRISTEN', 'PROTESTAN': 'KRISTEN', 'BUDDHA': 'BUDHA',
+      };
+
+      const SKK_MAP: Record<string, string> = {
+        'KEPALA KELUARGA': 'KEPALA KELUARGA', 'ISTRI': 'ISTRI', 'ANAK': 'ANAK',
+        'MERTUA': 'MERTUA', 'MENANTU': 'MENANTU', 'CUCU': 'CUCU', 'LAINNYA': 'LAINNYA',
+        'ORANG TUA': 'LAINNYA',
+      };
+
       // Normalisasi data anggota
       if (parsedData.anggota) {
         parsedData.anggota = parsedData.anggota.map((a: any) => ({
           ...a,
           nik: String(a.nik || '').replace(/\D/g, '').substring(0, 16),
           tanggalLahir: normalizeDate(a.tanggalLahir),
+          agama: mapOrKeep(a.agama, AGAMA_MAP),
+          pendidikan: mapOrKeep(a.pendidikan, PEND_MAP),
+          pekerjaan: mapOrKeep(a.pekerjaan, PEK_MAP),
+          statusPerkawinan: mapOrKeep(a.statusPerkawinan, SK_MAP),
+          statusKeluarga: mapOrKeep(a.statusKeluarga, SKK_MAP),
           kewarganegaraan: /WNA/i.test(a.kewarganegaraan || '') ? 'WNA' : 'WNI',
         }));
       }
@@ -1557,42 +1622,22 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Agama</Label>
-                <Select value={formData.agama} onValueChange={v => updateField('agama', v)}>
-                  <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                  <SelectContent>
-                    {AGAMA.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <ComboInput value={formData.agama} onChange={v => updateField('agama', v)} options={[...AGAMA]} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Pendidikan</Label>
-                <Select value={formData.pendidikan} onValueChange={v => updateField('pendidikan', v)}>
-                  <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                  <SelectContent>
-                    {PENDIDIKAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <ComboInput value={formData.pendidikan} onChange={v => updateField('pendidikan', v)} options={[...PENDIDIKAN]} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Pekerjaan</Label>
-                <Select value={formData.pekerjaan} onValueChange={v => updateField('pekerjaan', v)}>
-                  <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                  <SelectContent>
-                    {PEKERJAAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <ComboInput value={formData.pekerjaan} onChange={v => updateField('pekerjaan', v)} options={[...PEKERJAAN]} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Status Perkawinan</Label>
-                <Select value={formData.statusPerkawinan} onValueChange={v => updateField('statusPerkawinan', v)}>
-                  <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                  <SelectContent>
-                    {STATUS_PERKAWINAN.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <ComboInput value={formData.statusPerkawinan} onChange={v => updateField('statusPerkawinan', v)} options={[...STATUS_PERKAWINAN]} />
               </div>
             </div>
 
@@ -1853,12 +1898,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Status Keluarga *</Label>
-                              <Select value={anggota.statusKeluarga} onValueChange={v => updateAnggotaField(idx, 'statusKeluarga', v)}>
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                                <SelectContent>
-                                  {STATUS_KELUARGA.filter(s => s !== 'KEPALA KELUARGA').map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
+                              <ComboInput value={anggota.statusKeluarga} onChange={v => updateAnggotaField(idx, 'statusKeluarga', v)} options={STATUS_KELUARGA.filter(s => s !== 'KEPALA KELUARGA')} />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Tanggal Lahir *</Label>
@@ -1882,45 +1922,25 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Agama</Label>
-                              <Select value={anggota.agama} onValueChange={v => updateAnggotaField(idx, 'agama', v)}>
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                                <SelectContent>
-                                  {AGAMA.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
+                              <ComboInput value={anggota.agama} onChange={v => updateAnggotaField(idx, 'agama', v)} options={[...AGAMA]} />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                               <Label className="text-xs">Pendidikan</Label>
-                              <Select value={anggota.pendidikan} onValueChange={v => updateAnggotaField(idx, 'pendidikan', v)}>
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                                <SelectContent>
-                                  {PENDIDIKAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
+                              <ComboInput value={anggota.pendidikan} onChange={v => updateAnggotaField(idx, 'pendidikan', v)} options={[...PENDIDIKAN]} />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Pekerjaan</Label>
-                              <Select value={anggota.pekerjaan} onValueChange={v => updateAnggotaField(idx, 'pekerjaan', v)}>
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                                <SelectContent>
-                                  {PEKERJAAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
+                              <ComboInput value={anggota.pekerjaan} onChange={v => updateAnggotaField(idx, 'pekerjaan', v)} options={[...PEKERJAAN]} />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                               <Label className="text-xs">Status Perkawinan</Label>
-                              <Select value={anggota.statusPerkawinan} onValueChange={v => updateAnggotaField(idx, 'statusPerkawinan', v)}>
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                                <SelectContent>
-                                  {STATUS_PERKAWINAN.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
+                              <ComboInput value={anggota.statusPerkawinan} onChange={v => updateAnggotaField(idx, 'statusPerkawinan', v)} options={[...STATUS_PERKAWINAN]} />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Kewarganegaraan</Label>
