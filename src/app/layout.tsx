@@ -15,6 +15,9 @@ export const metadata: Metadata = {
     icon: "/logo.png",
     apple: "/logo.png",
   },
+  other: {
+    "app-version": "v3-" + new Date().toISOString().split("T")[0],
+  },
 };
 
 export default function RootLayout({
