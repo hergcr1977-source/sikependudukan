@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     apple: "/logo.png",
   },
   other: {
-    "app-version": "v3-" + new Date().toISOString().split("T")[0],
+    "x-app-version": "v4-client-puter-20260429",
   },
 };
 
