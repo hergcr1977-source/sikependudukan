@@ -324,25 +324,46 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
       return;
     }
 
-    // Resize gambar jika terlalu besar (maks 1600px, JPEG quality 0.8)
-    const MAX_DIM = 1600;
+    // Resize gambar untuk preview (maks 1600px)
+    // Tapi simpan versi HIGH-RES untuk AI (maks 2560px, quality 0.95)
+    const MAX_DIM_PREVIEW = 1600;
+    const MAX_DIM_AI = 2560;
     const img = new Image();
     img.onload = () => {
       let w = img.width;
       let h = img.height;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
-        else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+      
+      // Versi AI — resolusi lebih tinggi agar teks kecil terbaca
+      let wAi = w, hAi = h;
+      if (wAi > MAX_DIM_AI || hAi > MAX_DIM_AI) {
+        if (wAi > hAi) { hAi = Math.round(hAi * MAX_DIM_AI / wAi); wAi = MAX_DIM_AI; }
+        else { wAi = Math.round(wAi * MAX_DIM_AI / hAi); hAi = MAX_DIM_AI; }
+      }
+      const canvasAi = document.createElement('canvas');
+      canvasAi.width = wAi;
+      canvasAi.height = hAi;
+      const ctxAi = canvasAi.getContext('2d');
+      if (ctxAi) {
+        ctxAi.imageSmoothingEnabled = true;
+        ctxAi.imageSmoothingQuality = 'high';
+        ctxAi.drawImage(img, 0, 0, wAi, hAi);
+        // Simpan high-res untuk AI Vision
+        originalScanRef.current = canvasAi.toDataURL('image/jpeg', 0.95);
+      }
+      
+      // Versi preview — resolusi lebih rendah untuk tampilan cepat
+      let wP = w, hP = h;
+      if (wP > MAX_DIM_PREVIEW || hP > MAX_DIM_PREVIEW) {
+        if (wP > hP) { hP = Math.round(hP * MAX_DIM_PREVIEW / wP); wP = MAX_DIM_PREVIEW; }
+        else { wP = Math.round(wP * MAX_DIM_PREVIEW / hP); hP = MAX_DIM_PREVIEW; }
       }
       const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = wP;
+      canvas.height = hP;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        originalScanRef.current = dataUrl;
-        setScanPreview(dataUrl);
+        ctx.drawImage(img, 0, 0, wP, hP);
+        setScanPreview(canvas.toDataURL('image/jpeg', 0.85));
         setScanRotation(0);
         setScanFlipH(false);
         setScanFlipV(false);
@@ -360,34 +381,67 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     setScanning(true);
     try {
       let parsedData: any;
+      let usedMethod = '';
 
-      // ========== METODE TESSERACT (Offline, Gratis) ==========
-      toast.loading('Preprocessing gambar...', { id: 'scan-kk-progress' });
-      const preprocessed = await preprocessImageForOCR(scanPreview);
+      // Gunakan preview (sudah termasuk rotasi user) untuk AI dan Tesseract
+      // Preview sudah cukup tinggi (1600px) dan mencerminkan orientasi yang benar
 
-      toast.loading('Membaca teks dari foto KK (OCR)...', { id: 'scan-kk-progress' });
-      const Tesseract = await import('tesseract.js');
-      const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
-        psm: 6, // uniform block of text — lebih cocok untuk dokumen terstruktur seperti KK
-        logger: (m: any) => {
-          if (m.status === 'recognizing text') {
-            const pct = Math.round((m.progress || 0) * 100);
-            toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
+      // ========== METODE 1: AI VISION (Lebih Akurat) ==========
+      try {
+        toast.loading('Membaca KK dengan AI Vision...', { id: 'scan-kk-progress' });
+        const res = await apiFetch('/api/scan-kk-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: scanPreview }),
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            parsedData = json.data;
+            usedMethod = 'AI Vision';
+            console.log('[Scan KK] AI Vision result:', JSON.stringify(parsedData, null, 2));
+          } else {
+            console.log('[Scan KK] AI Vision gagal:', json.error, '- fallback ke Tesseract');
           }
-        },
-      });
-      const ocrText = result.data.text;
-
-      if (!ocrText || ocrText.trim().length < 20) {
-        toast.dismiss('scan-kk-progress');
-        toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
-        return;
+        } else {
+          const errData = await res.json().catch(() => ({ error: 'Unknown' }));
+          console.log('[Scan KK] AI Vision error:', errData.error, '- fallback ke Tesseract');
+        }
+      } catch (aiErr: any) {
+        console.log('[Scan KK] AI Vision exception:', aiErr.message, '- fallback ke Tesseract');
       }
 
-      console.log('[Scan KK] OCR raw text:\n', ocrText);
-      toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
-      parsedData = parseKKFromOCR(ocrText);
-      console.log('[Scan KK] Parsed result:', JSON.stringify(parsedData, null, 2));
+      // ========== METODE 2: TESSERACT (Fallback) ==========
+      if (!parsedData) {
+        toast.loading('AI tidak tersedia, gunakan OCR Tesseract...', { id: 'scan-kk-progress' });
+        const preprocessed = await preprocessImageForOCR(scanPreview);
+
+        toast.loading('Membaca teks dari foto KK (OCR)...', { id: 'scan-kk-progress' });
+        const Tesseract = await import('tesseract.js');
+        const result = await Tesseract.recognize(preprocessed, 'ind+eng', {
+          psm: 6,
+          logger: (m: any) => {
+            if (m.status === 'recognizing text') {
+              const pct = Math.round((m.progress || 0) * 100);
+              toast.loading(`Membaca teks... ${pct}%`, { id: 'scan-kk-progress' });
+            }
+          },
+        });
+        const ocrText = result.data.text;
+
+        if (!ocrText || ocrText.trim().length < 20) {
+          toast.dismiss('scan-kk-progress');
+          toast.error('Tidak dapat membaca teks dari gambar. Pastikan foto KK jelas dan tidak blur.');
+          return;
+        }
+
+        console.log('[Scan KK] OCR raw text:\n', ocrText);
+        toast.loading('Menganalisis data KK...', { id: 'scan-kk-progress' });
+        parsedData = parseKKFromOCR(ocrText);
+        usedMethod = 'Tesseract OCR';
+        console.log('[Scan KK] Parsed result:', JSON.stringify(parsedData, null, 2));
+      }
 
       if (!parsedData || !(parsedData.noKK || (parsedData.anggota && parsedData.anggota.length > 0))) {
         toast.dismiss('scan-kk-progress');
@@ -482,7 +536,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
 
       const namaDisplay = kepala?.namaLengkap || parsedData.namaKepala || parsedData.namaKepalaKeluarga || 'Kepala Keluarga';
       const totalAnggota = parsedData.anggota?.length || 0;
-      toast.success(`KK berhasil dibaca: ${namaDisplay} (${totalAnggota} anggota). Silakan periksa dan lengkapi data.`);
+      toast.success(`KK berhasil dibaca (${usedMethod}): ${namaDisplay} (${totalAnggota} anggota). Silakan periksa dan lengkapi data.`);
     } catch (err: any) {
       toast.dismiss('scan-kk-progress');
       console.error('[Scan KK] Error:', err);
