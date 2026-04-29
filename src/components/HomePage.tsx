@@ -34,7 +34,7 @@ interface HomePageProps {
 }
 
 export default function HomePage({ initialRole, initialNama, initialRtId, initialRtInfo }: HomePageProps) {
-  const [activeTab, setActiveTab] = useState('beranda');
+  const [activeTab, setActiveTab] = useState(initialRole === 'superadmin' ? 'admin' : 'beranda');
   const [auth, setAuth] = useState<{
     authenticated: boolean;
     role: string | null;
@@ -236,7 +236,7 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className={`w-full grid mb-3 h-auto bg-white border shadow-sm rounded-lg p-1 ${
-            isSuperAdmin ? 'grid-cols-3' : 'grid-cols-7'
+            isSuperAdmin ? 'grid-cols-5' : 'grid-cols-7'
           }`}>
             {isSuperAdmin ? (
               <>
@@ -260,6 +260,55 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
                 >
                   <Building2 className="h-4 w-4" />
                   <span>Registrasi</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="beranda"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>Beranda</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="penduduk"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <Users className="h-4 w-4" />
+                  <span>Penduduk</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="sementara"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <UserRound className="h-4 w-4" />
+                  <span>Sementara</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="kejadian"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  <span>Kejadian</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="bantuan"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span>Bansos</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="laporan"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span>Laporan</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="kas"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <Wallet className="h-4 w-4" />
+                  <span>Kas RT</span>
                 </TabsTrigger>
               </>
             ) : (
@@ -317,43 +366,39 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
             )}
           </TabsList>
 
-          {isSuperAdmin ? (
-            <>
-              <TabsContent value="admin">
-                <TabSuperAdmin activeSection="rt" />
-              </TabsContent>
-              <TabsContent value="users">
-                <TabSuperAdmin activeSection="users" />
-              </TabsContent>
-              <TabsContent value="register">
-                <TabSuperAdmin activeSection="register" />
-              </TabsContent>
-            </>
-          ) : (
-            <>
-              <TabsContent value="beranda">
-                <TabBeranda isAdmin={isAdmin} isActive={activeTab === 'beranda'} />
-              </TabsContent>
-              <TabsContent value="penduduk">
-                <TabPenduduk isAdmin={isAdmin} isActive={activeTab === 'penduduk'} />
-              </TabsContent>
-              <TabsContent value="sementara">
-                <TabPendudukSementara isAdmin={isAdmin} isActive={activeTab === 'sementara'} />
-              </TabsContent>
-              <TabsContent value="kejadian">
-                <TabKejadian isAdmin={isAdmin} isActive={activeTab === 'kejadian'} />
-              </TabsContent>
-              <TabsContent value="bantuan">
-                <TabBantuan isAdmin={isAdmin} isActive={activeTab === 'bantuan'} />
-              </TabsContent>
-              <TabsContent value="laporan">
-                <TabLaporan isAdmin={isAdmin} isActive={activeTab === 'laporan'} />
-              </TabsContent>
-              <TabsContent value="kas">
-                <TabKasRT isAdmin={isAdmin} isActive={activeTab === 'kas'} />
-              </TabsContent>
-            </>
-          )}
+          {/* Tab content: superadmin melihat semua tab (3 manajemen + 7 normal) */}
+          <>
+            <TabsContent value="admin">
+              <TabSuperAdmin activeSection="rt" />
+            </TabsContent>
+            <TabsContent value="users">
+              <TabSuperAdmin activeSection="users" />
+            </TabsContent>
+            <TabsContent value="register">
+              <TabSuperAdmin activeSection="register" />
+            </TabsContent>
+            <TabsContent value="beranda">
+              <TabBeranda isAdmin={true} isActive={activeTab === 'beranda'} />
+            </TabsContent>
+            <TabsContent value="penduduk">
+              <TabPenduduk isAdmin={true} isActive={activeTab === 'penduduk'} />
+            </TabsContent>
+            <TabsContent value="sementara">
+              <TabPendudukSementara isAdmin={true} isActive={activeTab === 'sementara'} />
+            </TabsContent>
+            <TabsContent value="kejadian">
+              <TabKejadian isAdmin={true} isActive={activeTab === 'kejadian'} />
+            </TabsContent>
+            <TabsContent value="bantuan">
+              <TabBantuan isAdmin={true} isActive={activeTab === 'bantuan'} />
+            </TabsContent>
+            <TabsContent value="laporan">
+              <TabLaporan isAdmin={true} isActive={activeTab === 'laporan'} />
+            </TabsContent>
+            <TabsContent value="kas">
+              <TabKasRT isAdmin={true} isActive={activeTab === 'kas'} />
+            </TabsContent>
+          </>
         </Tabs>
       </div>
     </div>
