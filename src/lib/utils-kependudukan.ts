@@ -16,8 +16,8 @@ export function isWajibKTP(tanggalLahir: string | Date, refDate?: Date): boolean
   const birth = typeof tanggalLahir === 'string' ? parseISO(tanggalLahir) : tanggalLahir;
   const ref = refDate || new Date();
   const years = differenceInYears(ref, birth);
-  // Wajib KTP: penduduk yang berusia 17 tahun ke atas atau baru masuk 17 tahun
-  return years >= 17;
+  // Wajib KTP: penduduk yang berusia tepat 17 tahun (baru masuk 17, belum 18)
+  return years === 17;
 }
 
 export function formatTanggal(date: string | Date): string {
