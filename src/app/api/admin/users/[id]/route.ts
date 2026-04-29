@@ -20,7 +20,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { nama, role, rtId, aktif, password } = body;
+    const { username, nama, role, rtId, aktif, password } = body;
 
     // Check user exists
     const existing = await db.$queryRawUnsafe<Array<any>>(
@@ -31,15 +31,27 @@ export async function PUT(
       return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 });
     }
 
-    // Cannot deactivate superadmin
-    if (existing[0].role === 'superadmin' && aktif === false) {
-      return NextResponse.json({ error: 'Tidak dapat menonaktifkan akun superadmin' }, { status: 403 });
+    // Cannot change superadmin role or deactivate superadmin
+    if (existing[0].role === 'superadmin' && (aktif === false || (role !== undefined && role !== 'superadmin'))) {
+      return NextResponse.json({ error: 'Tidak dapat mengubah akun superadmin' }, { status: 403 });
     }
 
     // Build dynamic UPDATE
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
+
+    if (username !== undefined && username !== '') {
+      // Check username uniqueness (exclude current user)
+      const dup = await db.$queryRawUnsafe<Array<{ id: number }>>(
+        `SELECT id FROM "AppUser" WHERE username = $1 AND id != $2 LIMIT 1`,
+        username, userId
+      );
+      if (dup.length) {
+        return NextResponse.json({ error: 'Username sudah digunakan' }, { status: 409 });
+      }
+      updates.push(`username = $${paramIndex}`); values.push(username); paramIndex++;
+    }
 
     if (nama !== undefined) { updates.push(`nama = $${paramIndex}`); values.push(nama); paramIndex++; }
     if (role !== undefined) {

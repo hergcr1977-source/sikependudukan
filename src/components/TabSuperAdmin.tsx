@@ -25,6 +25,7 @@ interface RTData {
 interface UserData {
   id: number;
   username: string;
+  password: string;
   nama: string;
   role: string;
   rtId: number | null;
@@ -45,6 +46,9 @@ export default function TabSuperAdmin({ activeSection }: TabSuperAdminProps) {
   const [editId, setEditId] = useState<number | null>(null);
   const [resetPasswordId, setResetPasswordId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [editUsernameId, setEditUsernameId] = useState<number | null>(null);
+  const [editUsernameValue, setEditUsernameValue] = useState('');
+  const [showPasswords, setShowPasswords] = useState<Record<number, boolean>>({});
 
   // Form states
   const [rtForm, setRtForm] = useState({
@@ -197,11 +201,42 @@ export default function TabSuperAdmin({ activeSection }: TabSuperAdminProps) {
         toast.success('Password berhasil direset');
         setResetPasswordId(null);
         setNewPassword('');
+        loadUsers();
       } else {
-        toast.error('Gagal reset password');
+        const data = await res.json();
+        toast.error(data.error || 'Gagal reset password');
       }
     } catch { toast.error('Terjadi kesalahan'); }
     finally { setLoading(false); }
+  };
+
+  const handleUpdateUsername = async (userId: number) => {
+    if (!editUsernameValue || editUsernameValue.length < 3) {
+      toast.error('Username minimal 3 karakter');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: editUsernameValue.toLowerCase() }),
+      });
+      if (res.ok) {
+        toast.success('Username berhasil diubah');
+        setEditUsernameId(null);
+        setEditUsernameValue('');
+        loadUsers();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Gagal mengubah username');
+      }
+    } catch { toast.error('Terjadi kesalahan'); }
+    finally { setLoading(false); }
+  };
+
+  const togglePasswordVisibility = (userId: number) => {
+    setShowPasswords(prev => ({ ...prev, [userId]: !prev[userId] }));
   };
 
   const handleToggleUser = async (userId: number, aktif: number) => {
@@ -436,8 +471,8 @@ export default function TabSuperAdmin({ activeSection }: TabSuperAdminProps) {
           {users.map(user => (
             <div key={user.id} className={`bg-white border rounded-lg p-3 ${user.aktif ? '' : 'opacity-50'}`}>
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-sm flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm flex items-center gap-2 flex-wrap">
                     {user.nama}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                       user.role === 'superadmin' ? 'bg-purple-100 text-purple-700' :
@@ -448,13 +483,46 @@ export default function TabSuperAdmin({ activeSection }: TabSuperAdminProps) {
                     </span>
                     {!user.aktif && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">NONAKTIF</span>}
                   </p>
-                  <p className="text-xs text-gray-500">
-                    @{user.username}
-                    {user.namaRT ? ` &middot; RT.${user.namaRT} RW.${user.rw}` : ' &middot; Tanpa RT'}
-                  </p>
+                  {/* Username + Password display */}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {editUsernameId === user.id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-400">@</span>
+                        <input
+                          type="text"
+                          className="text-xs border border-purple-300 rounded px-2 py-0.5 w-28 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          value={editUsernameValue}
+                          onChange={e => setEditUsernameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleUpdateUsername(user.id); if (e.key === 'Escape') { setEditUsernameId(null); setEditUsernameValue(''); } }}
+                          autoFocus
+                        />
+                        <button onClick={() => handleUpdateUsername(user.id)} className="p-0.5 text-green-600 hover:bg-green-50 rounded" title="Simpan" disabled={loading}>
+                          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        </button>
+                        <button onClick={() => { setEditUsernameId(null); setEditUsernameValue(''); }} className="p-0.5 text-gray-400 hover:bg-gray-100 rounded" title="Batal">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500 cursor-pointer hover:text-purple-600" onClick={() => { setEditUsernameId(user.id); setEditUsernameValue(user.username); }} title="Klik untuk ubah username">
+                        @{user.username} <Edit2 className="h-2.5 w-2.5 inline" />
+                      </span>
+                    )}
+                    <span className="text-gray-300">|</span>
+                    <span className="text-[10px] text-gray-400">Password:</span>
+                    <span className="text-xs text-gray-600 font-mono">
+                      {showPasswords[user.id] ? user.password : '********'}
+                    </span>
+                    <button onClick={() => togglePasswordVisibility(user.id)} className="p-0.5 text-gray-400 hover:text-gray-600 rounded" title={showPasswords[user.id] ? 'Sembunyikan' : 'Lihat password'}>
+                      {showPasswords[user.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    </button>
+                  </div>
+                  {user.namaRT && (
+                    <p className="text-xs text-gray-400 mt-0.5">RT.{user.namaRT} RW.{user.rw}</p>
+                  )}
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => { setResetPasswordId(resetPasswordId === user.id ? null : user.id); setNewPassword(''); }} className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Reset Password">
+                <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <button onClick={() => { setResetPasswordId(resetPasswordId === user.id ? null : user.id); setNewPassword(''); setEditUsernameId(null); }} className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Reset Password">
                     <KeyRound className="h-4 w-4" />
                   </button>
                   {user.role !== 'superadmin' && (
@@ -478,6 +546,7 @@ export default function TabSuperAdmin({ activeSection }: TabSuperAdminProps) {
                     placeholder="Password baru (min. 6 karakter)"
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleResetPassword(user.id); }}
                   />
                   <button onClick={() => handleResetPassword(user.id)} className={btnPrimary + " py-1.5 px-3"} disabled={loading || newPassword.length < 6}>
                     {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Simpan'}

@@ -11,7 +11,7 @@ export async function GET() {
     if (isAuthError(auth)) return auth;
 
     const rows = await db.$queryRawUnsafe<Array<any>>(`
-      SELECT u.id, u.username, u.nama, u.role, u."rtId", u.aktif, u."createdAt", u."updatedAt",
+      SELECT u.id, u.username, u.password, u.nama, u.role, u."rtId", u.aktif, u."createdAt", u."updatedAt",
         r."namaRT", r.rw
       FROM "AppUser" u
       LEFT JOIN "RukunTetangga" r ON u."rtId" = r.id
