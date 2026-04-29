@@ -2,14 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hitungUmur, isWajibKTP, formatTanggal } from '@/lib/utils-kependudukan';
 import { requireAuth, isAuthError } from '@/lib/auth-server';
-import { ensureRtIdColumns } from '@/lib/db-migrate';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await ensureRtIdColumns();
-
     const auth = await requireAuth();
     if (isAuthError(auth)) return auth;
 

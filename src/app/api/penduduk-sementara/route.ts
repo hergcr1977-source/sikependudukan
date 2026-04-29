@@ -3,15 +3,12 @@ import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { toUpperCase, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { requireAdmin, requireAuth, isAuthError } from '@/lib/auth-server';
-import { ensureRtIdColumns } from '@/lib/db-migrate';
 
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureRtIdColumns();
-
     const auth = await requireAuth();
     if (isAuthError(auth)) return auth;
 

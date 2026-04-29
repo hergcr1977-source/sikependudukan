@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession, getSession } from '@/lib/auth-server';
 import { db } from '@/lib/db';
-import { ensureAuthTables } from '@/lib/db-migrate';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,8 +43,6 @@ async function authenticateUser(username: string, password: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureAuthTables();
-
     const { username, password } = await request.json();
 
     if (!username || !password) {
