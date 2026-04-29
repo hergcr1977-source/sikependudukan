@@ -47,12 +47,9 @@ export async function GET() {
     const dptL = dpt.filter(p => p.jenisKelamin === 'LAKI-LAKI').length;
     const dptP = dpt.filter(p => p.jenisKelamin === 'PEREMPUAN').length;
 
-    const wajibKTP = allPenduduk.filter(p => {
-      if (!p.tanggalLahir) return false;
-      if (p.punyaKTP === 'PUNYA') return false;
-      const { umurTahun } = hitungUmur(p.tanggalLahir);
-      return umurTahun === 17 || umurTahun === 18;
-    });
+    const wajibKTP = allPenduduk.filter(p =>
+      isWajibKTP(p.tanggalLahir, undefined, p.punyaKTP)
+    );
     const wajibKTPL = wajibKTP.filter(p => p.jenisKelamin === 'LAKI-LAKI').length;
     const wajibKTPP = wajibKTP.filter(p => p.jenisKelamin === 'PEREMPUAN').length;
 

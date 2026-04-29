@@ -213,7 +213,7 @@ async function generateReportData(bulan: number, tahun: number, rtId?: number) {
   const pendudukL = allPenduduk.filter(p => p.jenisKelamin === 'LAKI-LAKI').length;
   const pendudukP = allPenduduk.filter(p => p.jenisKelamin === 'PEREMPUAN').length;
 
-  const wajibKTPAll = allPenduduk.filter(p => isWajibKTP(p.tanggalLahir, refDate));
+  const wajibKTPAll = allPenduduk.filter(p => isWajibKTP(p.tanggalLahir, refDate, p.punyaKTP));
   const wajibKTPL = wajibKTPAll.filter(p => p.jenisKelamin === 'LAKI-LAKI').length;
   const wajibKTPP = wajibKTPAll.filter(p => p.jenisKelamin === 'PEREMPUAN').length;
 

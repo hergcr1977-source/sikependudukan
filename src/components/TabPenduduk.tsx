@@ -1241,10 +1241,10 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
     return penduduk.filter(p => {
       switch (activeFilter) {
         case 'WAJIB_KTP_17': {
-          if (p.punyaKTP === 'PUNYA') return false;
           if (!p.tanggalLahir) return false;
+          if (p.punyaKTP === 'PUNYA') return false;
           const u = hitungUmur(p.tanggalLahir);
-          return u.umurTahun === 17 || u.umurTahun === 18;
+          return u.umurTahun === 17;
         }
         case 'USIA_75': {
           const u = p.tanggalLahir ? hitungUmur(p.tanggalLahir) : null;

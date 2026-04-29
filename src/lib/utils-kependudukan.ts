@@ -12,12 +12,15 @@ export function hitungUmur(tanggalLahir: string | Date, refDate?: Date) {
   return { umurTahun: years, umurBulan: 0, label: String(years), isBayi: false };
 }
 
-export function isWajibKTP(tanggalLahir: string | Date, refDate?: Date): boolean {
+export function isWajibKTP(tanggalLahir: string | Date, refDate?: Date, punyaKTP?: string | null): boolean {
   const birth = typeof tanggalLahir === 'string' ? parseISO(tanggalLahir) : tanggalLahir;
   const ref = refDate || new Date();
   const years = differenceInYears(ref, birth);
   // Wajib KTP: penduduk yang berusia tepat 17 tahun (baru masuk 17, belum 18)
-  return years === 17;
+  // Jika sudah punya KTP (PUNYA), tidak termasuk wajib KTP
+  if (years !== 17) return false;
+  if (punyaKTP === 'PUNYA') return false;
+  return true;
 }
 
 export function formatTanggal(date: string | Date): string {
