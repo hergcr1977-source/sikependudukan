@@ -96,6 +96,28 @@ async function _runAuthMigration() {
     await db.$executeRawUnsafe(
       `ALTER TABLE "LaporanBulanan" ADD COLUMN IF NOT EXISTS "keterangan" TEXT`
     );
+
+    // Add unique constraint on (rtId, bulan, tahun) for LaporanBulanan upsert
+    try {
+      const constraintExists = await db.$queryRawUnsafe<Array<{ constraint_name: string }>>(
+        `SELECT constraint_name FROM information_schema.table_constraints
+         WHERE table_name = 'laporanbulanan' AND constraint_type = 'UNIQUE'`
+      );
+      const hasRtBulanTahunConstraint = constraintExists.some(
+        c => c.constraint_name === 'LaporanBulanan_rtId_bulan_tahun_key'
+      );
+      if (!hasRtBulanTahunConstraint) {
+        await db.$executeRawUnsafe(
+          `ALTER TABLE "LaporanBulanan" ADD CONSTRAINT "LaporanBulanan_rtId_bulan_tahun_key" UNIQUE ("rtId", "bulan", "tahun")`
+        );
+        console.log('[migrate] Added unique constraint LaporanBulanan(rtId, bulan, tahun)');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('already exists')) {
+        console.log('[migrate] LaporanBulanan constraint:', msg.substring(0, 200));
+      }
+    }
   } catch (e) {
     console.log('[migrate] Auth tables:', e);
   }
