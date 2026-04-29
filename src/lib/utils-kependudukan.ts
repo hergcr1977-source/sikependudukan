@@ -1,4 +1,4 @@
-import { differenceInMonths, differenceInYears, parseISO } from 'date-fns';
+import { differenceInMonths, differenceInYears, parseISO, format } from 'date-fns';
 
 export function hitungUmur(tanggalLahir: string | Date, refDate?: Date) {
   const birth = typeof tanggalLahir === 'string' ? parseISO(tanggalLahir) : tanggalLahir;
@@ -22,11 +22,18 @@ export function isWajibKTP(tanggalLahir: string | Date, refDate?: Date): boolean
 
 export function formatTanggal(date: string | Date): string {
   const d = typeof date === 'string' ? parseISO(date) : date;
-  return d.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return format(d, 'dd-MM-yyyy');
+}
+
+// Deteksi tanggal lahir yang bermasalah (epoch 1970 atau sebelum 01-01-1930)
+export function isTanggalLahirInvalid(tanggalLahir: string | Date): boolean {
+  const d = typeof tanggalLahir === 'string' ? parseISO(tanggalLahir) : tanggalLahir;
+  // Tanggal 1970-01-01 = epoch error (data kosong)
+  if (d.getFullYear() === 1970 && d.getMonth() === 0 && d.getDate() === 1) return true;
+  // Tanggal sebelum 01-01-1930 tidak valid
+  const minDate = new Date(1930, 0, 1);
+  if (d < minDate) return true;
+  return false;
 }
 
 export function validateNIK(nik: string): boolean {

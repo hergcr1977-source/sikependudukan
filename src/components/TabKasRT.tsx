@@ -82,11 +82,10 @@ function formatRupiah(angka: number): string {
 
 function formatTanggal(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTProps) {
