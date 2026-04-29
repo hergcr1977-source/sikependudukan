@@ -33,6 +33,7 @@ import {
 import {
   Plus, Pencil, Trash2, Wallet, ArrowUpCircle, ArrowDownCircle,
   TrendingUp, Download, ChevronDown, ChevronUp, Filter, Save,
+  Archive, Eye, CheckCircle2, Restore,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BULAN } from '@/lib/constants';
@@ -45,6 +46,22 @@ interface KasEntry {
   jenis: string;
   jumlah: number;
   keterangan: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BackupItem {
+  id: number;
+  bulan: number;
+  tahun: number;
+  label: string;
+  summary: {
+    totalPemasukan?: number;
+    totalPengeluaran?: number;
+    saldo?: number;
+    jumlahTransaksi?: number;
+    transactions?: any[];
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,6 +104,10 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KasEntry | null>(null);
   const [savingBackup, setSavingBackup] = useState(false);
+  const [showRiwayat, setShowRiwayat] = useState(false);
+  const [backupList, setBackupList] = useState<BackupItem[]>([]);
+  const [viewingBackup, setViewingBackup] = useState<BackupItem | null>(null);
+  const [loadingBackup, setLoadingBackup] = useState(false);
 
   // Filter
   const [filterBulan, setFilterBulan] = useState(String(now.getMonth() + 1));
@@ -230,6 +251,23 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     }
   };
 
+  const loadBackupList = async () => {
+    try {
+      const res = await apiFetch('/api/kas-rt/backup');
+      if (res.ok) setBackupList(await res.json());
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    loadBackupList();
+  }, []);
+
+  useEffect(() => {
+    if (isActive) loadBackupList();
+  }, [isActive]);
+
   const handleSaveBackup = async () => {
     setSavingBackup(true);
     try {
@@ -240,6 +278,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
       });
       if (res.ok) {
         toast.success('Backup kas berhasil disimpan');
+      loadBackupList();
       } else {
         toast.error('Gagal menyimpan backup');
       }
@@ -248,6 +287,37 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     } finally {
       setSavingBackup(false);
     }
+  };
+
+  const handleDeleteBackup = async (id: number) => {
+    if (!confirm('Hapus backup ini?')) return;
+    try {
+      const res = await apiFetch(`/api/kas-rt/backup?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Backup berhasil dihapus');
+        loadBackupList();
+        if (viewingBackup?.id === id) setViewingBackup(null);
+      }
+    } catch {
+      toast.error('Gagal menghapus backup');
+    }
+  };
+
+  const handleRestoreBackup = (backup: BackupItem) => {
+    if (!backup.summary?.transactions) return;
+    const restored: KasEntry[] = backup.summary.transactions.map((t: any) => ({
+      id: t.id || 0,
+      tanggal: t.tanggal,
+      jenis: t.jenis,
+      jumlah: Number(t.jumlah),
+      keterangan: t.keterangan || '',
+      createdAt: t.createdAt || new Date().toISOString(),
+      updatedAt: t.updatedAt || new Date().toISOString(),
+    }));
+    setData(restored);
+    setViewingBackup(null);
+    setShowRiwayat(false);
+    toast.success(`Data backup ${backup.label} berhasil ditampilkan`);
   };
 
   const handleExportExcel = () => {
@@ -298,10 +368,23 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
           <Badge variant="secondary" className="text-xs">{data.length} transaksi</Badge>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={handleSaveBackup} disabled={savingBackup}>
-            <Save className="h-3.5 w-3.5 mr-1" />
-            {savingBackup ? 'Menyimpan...' : 'Simpan Backup'}
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRiwayat(!showRiwayat)}
+              className="text-xs gap-1"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Riwayat ({backupList.length})
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={handleSaveBackup} disabled={savingBackup}>
+              <Save className="h-3.5 w-3.5 mr-1" />
+              {savingBackup ? 'Menyimpan...' : 'Simpan'}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleExportExcel}>
             <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
           </Button>
@@ -326,6 +409,52 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
           )}
         </div>
       </div>
+
+      {/* Riwayat Backup */}
+      {showRiwayat && (
+        <Card className="border-emerald-200">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-emerald-800">Riwayat Backup Kas</h3>
+              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => setShowRiwayat(false)}>
+                Tutup
+              </Button>
+            </div>
+            {backupList.length === 0 ? (
+              <p className="text-xs text-gray-500">Belum ada backup tersimpan. Klik &quot;Simpan&quot; untuk menyimpan data kas saat ini.</p>
+            ) : (
+              <div className="space-y-1">
+                {backupList.map(b => (
+                  <div key={b.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                      <span className="font-medium truncate">{b.label}</span>
+                      {b.summary && (
+                        <span className="text-gray-400 shrink-0">
+                          ({b.summary.jumlahTransaksi || 0} transaksi · Saldo: {formatRupiah(b.summary.saldo || 0)})
+                        </span>
+                      )}
+                      <span className="text-gray-400 shrink-0">
+                        disimpan: {new Date(b.updatedAt).toLocaleDateString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {b.summary?.transactions && (
+                        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-blue-600 hover:text-blue-800" onClick={() => handleRestoreBackup(b)}>
+                          <Restore className="h-3 w-3 mr-0.5" /> Tampilkan
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-red-500 hover:text-red-700" onClick={() => handleDeleteBackup(b.id)}>
+                        <Trash2 className="h-3 w-3 mr-0.5" /> Hapus
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filter */}
       <Card>
