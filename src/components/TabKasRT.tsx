@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Plus, Pencil, Trash2, Wallet, ArrowUpCircle, ArrowDownCircle,
-  TrendingUp, Download, ChevronDown, ChevronUp, Filter,
+  TrendingUp, Download, ChevronDown, ChevronUp, Filter, Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BULAN } from '@/lib/constants';
@@ -86,6 +86,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KasEntry | null>(null);
+  const [savingBackup, setSavingBackup] = useState(false);
 
   // Filter
   const [filterBulan, setFilterBulan] = useState(String(now.getMonth() + 1));
@@ -229,6 +230,26 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
     }
   };
 
+  const handleSaveBackup = async () => {
+    setSavingBackup(true);
+    try {
+      const res = await apiFetch('/api/kas-rt/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulan: parseInt(filterBulan), tahun: parseInt(filterTahun) }),
+      });
+      if (res.ok) {
+        toast.success('Backup kas berhasil disimpan');
+      } else {
+        toast.error('Gagal menyimpan backup');
+      }
+    } catch {
+      toast.error('Gagal menyimpan backup');
+    } finally {
+      setSavingBackup(false);
+    }
+  };
+
   const handleExportExcel = () => {
     const headers = ['No', 'Tanggal', 'Jenis', 'Jumlah', 'Keterangan'];
     const rows = data.map((d, i) => [
@@ -277,6 +298,10 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
           <Badge variant="secondary" className="text-xs">{data.length} transaksi</Badge>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={handleSaveBackup} disabled={savingBackup}>
+            <Save className="h-3.5 w-3.5 mr-1" />
+            {savingBackup ? 'Menyimpan...' : 'Simpan Backup'}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportExcel}>
             <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
           </Button>

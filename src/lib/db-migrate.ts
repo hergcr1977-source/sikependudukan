@@ -91,6 +91,11 @@ async function _runAuthMigration() {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add keterangan column to LaporanBulanan if missing
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "LaporanBulanan" ADD COLUMN IF NOT EXISTS "keterangan" TEXT`
+    );
   } catch (e) {
     console.log('[migrate] Auth tables:', e);
   }
