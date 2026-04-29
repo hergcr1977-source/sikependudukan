@@ -17,6 +17,9 @@ import { db } from '@/lib/db';
 const FONNTE_API_KEY = process.env.FONNTE_API_KEY || '6HQgtJr48wrWjqDT47Gc';
 const FONNTE_SEND_URL = 'https://api.fonnte.com/send';
 
+// Bot hanya membaca data untuk RT ini (rtId = 1 = RT.001 RW.002)
+const BOT_RT_ID = parseInt(process.env.BOT_RT_ID || '1');
+
 // In-memory webhook log (for debugging)
 const webhookLogs: Array<{
   time: string;
@@ -123,9 +126,9 @@ async function handleCekNik(phone: string, nik: string) {
     return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #NIK 3201010101010001`);
   }
 
-  // Cari di Penduduk dulu, lalu PendudukSementara
+  // Cari di Penduduk dulu, lalu PendudukSementara (filter rtId)
   const penduduk = await db.$queryRawUnsafe(
-    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 LIMIT 1`, nik
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 AND "rtId" = $2 LIMIT 1`, nik, BOT_RT_ID
   ) as any[];
 
   let p: any = null;
@@ -136,7 +139,7 @@ async function handleCekNik(phone: string, nik: string) {
   } else {
     // Cari di PendudukSementara
     const sem = await db.$queryRawUnsafe(
-      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 LIMIT 1`, nik
+      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 AND "rtId" = $2 LIMIT 1`, nik, BOT_RT_ID
     ) as any[];
     if (sem && sem.length > 0) {
       p = sem[0];
@@ -145,7 +148,7 @@ async function handleCekNik(phone: string, nik: string) {
   }
 
   if (!p) {
-    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
+    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan di RT.001 RW.002.\n\nData dicari di Penduduk & Penduduk Sementara RT.001 RW.002.`);
   }
 
   const tanggalLahir = p.tanggalLahir ? formatTanggal(new Date(p.tanggalLahir)) : '-';
@@ -222,23 +225,23 @@ async function handleCekKK(phone: string, noKK: string) {
     return await sendWaMessage(phone, `No. KK minimal 15 digit angka.\n\nContoh: #KK 3201010101010001`);
   }
 
-  // Cari di kedua tabel: Penduduk + PendudukSementara
+  // Cari di kedua tabel: Penduduk + PendudukSementara (filter rtId)
   const penduduk = await db.$queryRawUnsafe(
-    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "noKK" = $1 ORDER BY CASE 
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "noKK" = $1 AND "rtId" = $2 ORDER BY CASE 
       WHEN "statusKeluarga" = 'KEPALA KELUARGA' THEN 1
       WHEN "statusKeluarga" = 'ISTRI' THEN 2
       WHEN "statusKeluarga" = 'ANAK' THEN 3
       ELSE 4
-    END ASC`, kk
+    END ASC`, kk, BOT_RT_ID
   ) as any[];
 
   const sementara = await db.$queryRawUnsafe(
-    `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "noKK" = $1 ORDER BY CASE 
+    `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "noKK" = $1 AND "rtId" = $2 ORDER BY CASE 
       WHEN "statusKeluarga" = 'KEPALA KELUARGA' THEN 1
       WHEN "statusKeluarga" = 'ISTRI' THEN 2
       WHEN "statusKeluarga" = 'ANAK' THEN 3
       ELSE 4
-    END ASC`, kk
+    END ASC`, kk, BOT_RT_ID
   ) as any[];
 
   const anggotaPenduduk = penduduk || [];
@@ -246,7 +249,7 @@ async function handleCekKK(phone: string, noKK: string) {
   const totalAnggota = anggotaPenduduk.length + anggotaSementara.length;
 
   if (totalAnggota === 0) {
-    return await sendWaMessage(phone, `Data penduduk dengan No. KK *${kk}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
+    return await sendWaMessage(phone, `Data penduduk dengan No. KK *${kk}* tidak ditemukan di RT.001 RW.002.`);
   }
 
   const alamatRef = anggotaPenduduk.length > 0 ? anggotaPenduduk[0] : anggotaSementara[0];
@@ -321,17 +324,17 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
 }
 
 async function handleBantuan(phone: string) {
-  // 1. Data Desil (hanya dari Penduduk tetap)
+  // 1. Data Desil (hanya dari Penduduk tetap, filter rtId)
   const desilData = await db.$queryRawUnsafe(
-    `SELECT "desil", COUNT(*)::int as count FROM "Penduduk" WHERE "desil" IS NOT NULL AND "desil" != '' GROUP BY "desil" ORDER BY "desil" ASC`
+    `SELECT "desil", COUNT(*)::int as count FROM "Penduduk" WHERE "rtId" = $1 AND "desil" IS NOT NULL AND "desil" != '' GROUP BY "desil" ORDER BY "desil" ASC`, BOT_RT_ID
   ) as any[];
 
-  // 2. Data Jenis Bantuan - gabungan Penduduk + PendudukSementara
+  // 2. Data Jenis Bantuan - gabungan Penduduk + PendudukSementara (filter rtId)
   const bantuanRowsPenduduk = await db.$queryRawUnsafe(
-    `SELECT "bantuan" FROM "Penduduk" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`
+    `SELECT "bantuan" FROM "Penduduk" WHERE "rtId" = $1 AND "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`, BOT_RT_ID
   ) as any[];
   const bantuanRowsSementara = await db.$queryRawUnsafe(
-    `SELECT "bantuan" FROM "PendudukSementara" WHERE "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`
+    `SELECT "bantuan" FROM "PendudukSementara" WHERE "rtId" = $1 AND "bantuan" != '[]' AND "bantuan" IS NOT NULL AND "bantuan" != ''`, BOT_RT_ID
   ) as any[];
   const bantuanRows = [...bantuanRowsPenduduk, ...bantuanRowsSementara];
 
@@ -349,12 +352,12 @@ async function handleBantuan(phone: string) {
     } catch {}
   });
 
-  // 3. Data BPJS - gabungan Penduduk + PendudukSementara
+  // 3. Data BPJS - gabungan Penduduk + PendudukSementara (filter rtId)
   const bpjsDataPenduduk = await db.$queryRawUnsafe(
-    `SELECT "bpjs", COUNT(*)::int as count FROM "Penduduk" WHERE "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`
+    `SELECT "bpjs", COUNT(*)::int as count FROM "Penduduk" WHERE "rtId" = $1 AND "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`, BOT_RT_ID
   ) as any[];
   const bpjsDataSementara = await db.$queryRawUnsafe(
-    `SELECT "bpjs", COUNT(*)::int as count FROM "PendudukSementara" WHERE "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`
+    `SELECT "bpjs", COUNT(*)::int as count FROM "PendudukSementara" WHERE "rtId" = $1 AND "bpjs" IS NOT NULL AND "bpjs" != '' GROUP BY "bpjs"`, BOT_RT_ID
   ) as any[];
 
   // Gabungkan BPJS count
@@ -364,9 +367,9 @@ async function handleBantuan(phone: string) {
   });
   const bpjsData = Object.entries(bpjsMerged).map(([bpjs, count]) => ({ bpjs, count })).sort((a, b) => b.count - a.count);
 
-  // Total penduduk gabungan
-  const totalPenduduk = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "Penduduk"`) as any[];
-  const totalSementara = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "PendudukSementara"`) as any[];
+  // Total penduduk gabungan (filter rtId)
+  const totalPenduduk = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "Penduduk" WHERE "rtId" = $1`, BOT_RT_ID) as any[];
+  const totalSementara = await db.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM "PendudukSementara" WHERE "rtId" = $1`, BOT_RT_ID) as any[];
   const totalTetap = totalPenduduk[0]?.count || 0;
   const totalSem = totalSementara[0]?.count || 0;
   const total = totalTetap + totalSem;
@@ -422,9 +425,9 @@ async function handleBantuanNik(phone: string, nik: string) {
     return await sendWaMessage(phone, `NIK harus 16 digit angka.\n\nContoh: #BANTUAN 3201010101010001`);
   }
 
-  // Cari di Penduduk dulu, lalu PendudukSementara
+  // Cari di Penduduk dulu, lalu PendudukSementara (filter rtId)
   const penduduk = await db.$queryRawUnsafe(
-    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 LIMIT 1`, nik
+    `SELECT *, 'PENDUDUK' as _sumber FROM "Penduduk" WHERE "nik" = $1 AND "rtId" = $2 LIMIT 1`, nik, BOT_RT_ID
   ) as any[];
 
   let p: any = null;
@@ -434,7 +437,7 @@ async function handleBantuanNik(phone: string, nik: string) {
     p = penduduk[0];
   } else {
     const sem = await db.$queryRawUnsafe(
-      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 LIMIT 1`, nik
+      `SELECT *, 'SEMENTARA' as _sumber FROM "PendudukSementara" WHERE "nik" = $1 AND "rtId" = $2 LIMIT 1`, nik, BOT_RT_ID
     ) as any[];
     if (sem && sem.length > 0) {
       p = sem[0];
@@ -443,7 +446,7 @@ async function handleBantuanNik(phone: string, nik: string) {
   }
 
   if (!p) {
-    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan.\n\nData dicari di Penduduk & Penduduk Sementara.`);
+    return await sendWaMessage(phone, `Data penduduk dengan NIK *${nik}* tidak ditemukan di RT.001 RW.002.`);
   }
 
   // Parse bantuan
@@ -478,9 +481,9 @@ _Data dari Sistem Kependudukan RT.001 RW.002_`;
 }
 
 async function handleKasRT(phone: string) {
-  // Ambil SEMUA data kas (tanpa filter bulan)
+  // Ambil SEMUA data kas untuk RT ini (filter rtId)
   const allData = await db.$queryRawUnsafe(
-    `SELECT * FROM "KasRT" ORDER BY "tanggal" ASC`
+    `SELECT * FROM "KasRT" WHERE "rtId" = $1 ORDER BY "tanggal" ASC`, BOT_RT_ID
   ) as any[];
 
   if (!allData || allData.length === 0) {
