@@ -40,8 +40,9 @@ import {
   KECAMATAN_DEFAULT, KABUPATEN_DEFAULT, PROVINSI_DEFAULT,
   STATUS_KTP, STATUS_KELUARGA, JENIS_KELAMIN,
 } from '@/lib/constants';
-import { hitungUmur, isWajibKTP, formatTanggal, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
+import { hitungUmur, isWajibKTP, formatTanggal, isTanggalLahirInvalid, validateNIK, validateNoKK } from '@/lib/utils-kependudukan';
 import { apiFetch } from '@/lib/api';
+import { useAutoRefresh } from '@/hooks/use-auto-refresh';
 import { ComboInput } from '@/components/ui/combo-input';
 import * as XLSX from 'xlsx';
 
@@ -243,9 +244,41 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchPenduduk]);
 
+  // Auto-refresh: usia dihitung ulang setiap menit & saat tab aktif
+  const lastRefresh = useAutoRefresh(() => {
+    fetchPenduduk();
+    autoUpdateKTP();
+  }, 60000); // refresh setiap 1 menit
+
+  // Auto-update punyaKTP berdasarkan usia saat ini
+  const autoUpdateKTP = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/penduduk/auto-update-ktp', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updated > 0) {
+          console.log(`[Auto KTP] ${data.updated} penduduk diperbarui`);
+          // Re-fetch data setelah update KTP
+          fetchPenduduk();
+          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+        }
+      }
+    } catch {
+      // silent — tidak perlu tampilkan error
+    }
+  }, [fetchPenduduk]);
+
+  // Jalankan auto-update KTP saat pertama kali mount
   useEffect(() => {
-    if (isActive) fetchPenduduk();
-  }, [isActive, fetchPenduduk]);
+    autoUpdateKTP();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isActive) {
+      fetchPenduduk();
+      autoUpdateKTP();
+    }
+  }, [isActive, fetchPenduduk, autoUpdateKTP]);
 
   // === SCAN KK: Rotasi gambar ===
   const rotateScanPreview = (direction: 'cw' | 'ccw') => {
@@ -1412,6 +1445,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
                         onEdit={openEditForm}
                         onDelete={setDeleteTarget}
                         onAddMember={p.statusKeluarga === 'KEPALA KELUARGA' ? () => openAddForm(p.noKK, true) : undefined}
+                        _refreshKey={lastRefresh}
                       />
                     </CardContent>
                   </Card>
@@ -1463,6 +1497,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
                             onEdit={openEditForm}
                             onDelete={setDeleteTarget}
                             onAddMember={() => openAddForm(group.noKK, true)}
+                            _refreshKey={lastRefresh}
                           />
                         )}
                         {group.anggota.map(a => (
@@ -1473,6 +1508,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
                             isAdmin={isAdmin}
                             onEdit={openEditForm}
                             onDelete={setDeleteTarget}
+                            _refreshKey={lastRefresh}
                           />
                         ))}
                       </div>
@@ -2285,6 +2321,8 @@ function PendudukRow({
   onEdit,
   onDelete,
   onAddMember,
+  // _refreshKey digunakan agar komponen re-render saat auto-refresh terjadi
+  _refreshKey,
 }: {
   penduduk: Penduduk;
   isKK: boolean;
@@ -2292,9 +2330,19 @@ function PendudukRow({
   onEdit: (p: Penduduk) => void;
   onDelete: (p: Penduduk) => void;
   onAddMember?: () => void;
+  _refreshKey?: number;
 }) {
   let umur = { label: '-' };
-  try { umur = hitungUmur(penduduk.tanggalLahir); } catch { /* skip */ }
+  let tanggalInvalid = false;
+  try {
+    if (penduduk.tanggalLahir) {
+      umur = hitungUmur(penduduk.tanggalLahir);
+      tanggalInvalid = isTanggalLahirInvalid(penduduk.tanggalLahir);
+    }
+  } catch { /* skip */ }
+
+  // Gunakan _refreshKey agar re-render terpicu saat auto-refresh
+  void _refreshKey;
 
   let bantuanArr: string[] = [];
   try { bantuanArr = JSON.parse(penduduk.bantuan || '[]').filter((b: string) => b !== 'TIDAK' && b !== ''); } catch { /* skip */ }
@@ -2308,9 +2356,12 @@ function PendudukRow({
           {!isKK && (
             <Badge variant="outline" className="text-[9px] px-1 py-0">{penduduk.statusKeluarga}</Badge>
           )}
+          {tanggalInvalid && (
+            <Badge className="text-[9px] px-1 py-0 bg-red-100 text-red-700 hover:bg-red-100" title="Tanggal lahir tidak valid (1970-01-01 atau sebelum 01-01-1930)">Tgl Lahir Error</Badge>
+          )}
         </div>
         <p className="text-[10px] text-muted-foreground mt-0.5">
-          NIK: {penduduk.nik} · {penduduk.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'} · Umur: {umur.label}
+          NIK: {penduduk.nik} · {penduduk.jenisKelamin === 'LAKI-LAKI' ? 'L' : 'P'} · Umur: {umur.label}{tanggalInvalid ? ' ⚠' : ''}
         </p>
         {/* Bantuan, BPJS, Keterangan */}
         <div className="flex items-center gap-1.5 flex-wrap mt-1">

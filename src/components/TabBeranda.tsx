@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Trash2, AlertTriangle, Loader2, Database, MessageSquare, Send, Radio } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
+import { useAutoRefresh } from '@/hooks/use-auto-refresh';
 
 interface Statistik {
   totalKK: number;
@@ -64,6 +65,11 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
   useEffect(() => {
     fetchStatistik();
   }, []);
+
+  // Auto-refresh statistik setiap menit & saat tab aktif
+  useAutoRefresh(() => {
+    fetchStatistik();
+  }, 60000);
 
   useEffect(() => {
     if (isActive) {
