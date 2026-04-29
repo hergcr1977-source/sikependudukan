@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,7 +26,9 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        window.location.href = '/';
+        setSuccess(true);
+        // Gunakan router.push untuk navigasi client-side (lebih cepat)
+        router.push('/');
       } else {
         const data = await res.json();
         setError(data.error || 'Login gagal');
@@ -109,6 +114,8 @@ export default function LoginPage() {
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : success ? (
+                <CheckCircle2 className="h-4 w-4" />
               ) : (
                 'Masuk'
               )}
