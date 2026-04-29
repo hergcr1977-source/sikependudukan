@@ -396,12 +396,26 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await apiFetch(`/api/kejadian?id=${deleteTarget.id}`, { method: 'DELETE' });
-    if (res.ok) {
-      toast.success('Kejadian dihapus');
-      setDeleteTarget(null);
-      fetchData();
-      window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+    try {
+      const res = await apiFetch(`/api/kejadian?id=${deleteTarget.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const result = await res.json();
+        setDeleteTarget(null);
+        fetchData();
+        fetchKKOptions();
+        window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+
+        if (result.jenisKejadian === 'MATI' || result.jenisKejadian === 'PINDAH') {
+          toast.warning(`Kejadian ${result.jenisKejadian} dihapus. Catatan: penduduk atas nama ${result.namaLengkap} sudah terlanjur dihapus dari data KK dan tidak bisa dikembalikan otomatis.`);
+        } else {
+          toast.success('Kejadian berhasil dihapus');
+        }
+      } else {
+        const err = await res.json();
+        toast.error(err.error || 'Gagal menghapus kejadian');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan koneksi');
     }
   };
 

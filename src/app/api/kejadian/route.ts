@@ -414,10 +414,21 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
+    const jenis = toUpperCase(existing.jenisKejadian);
+
+    // Catatan: penduduk yang dihapus saat kejadian MATI/PINDAH tidak bisa dikembalikan
+    // karena data lengkap penduduk (ttl, agama, pendidikan dll) tidak tersimpan di kejadian
+
     await db.kejadian.delete({ where: { id } });
     revalidatePath('/api/kejadian');
     revalidatePath('/api/statistik');
-    return NextResponse.json({ message: 'Data berhasil dihapus' });
+    revalidatePath('/api/penduduk');
+    return NextResponse.json({
+      message: 'Kejadian berhasil dihapus',
+      jenisKejadian: jenis,
+      namaLengkap: existing.namaLengkap,
+      nik: existing.nik,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Gagal menghapus data' }, { status: 500 });
