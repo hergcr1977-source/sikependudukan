@@ -98,7 +98,6 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   const [formError, setFormError] = useState('');
   const [kkOpen, setKkOpen] = useState(false);
   const kkInputRef = useRef<HTMLInputElement>(null);
-  const dialogJustOpened = useRef(false);
 
   const [deleteTarget, setDeleteTarget] = useState<Kejadian | null>(null);
 
@@ -178,9 +177,6 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       statusKeluarga: '',
     });
     setShowForm(true);
-    // Tandai dialog baru dibuka supaya autoFocus Radix tidak buka dropdown KK
-    dialogJustOpened.current = true;
-    setTimeout(() => { dialogJustOpened.current = false; }, 500);
   };
 
   const openEdit = (k: Kejadian) => {
@@ -199,9 +195,6 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       statusKeluarga: '',
     });
     setShowForm(true);
-    // Tandai dialog baru dibuka supaya autoFocus Radix tidak buka dropdown KK
-    dialogJustOpened.current = true;
-    setTimeout(() => { dialogJustOpened.current = false; }, 500);
   };
 
   const handleSubmit = async () => {
@@ -327,7 +320,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
             setFormData({ ...formData, noKK: val });
             if (!kkOpen) setKkOpen(true);
           }}
-          onFocus={() => { if (!dialogJustOpened.current) setKkOpen(true); }}
+          onClick={() => { if (!kkOpen) setKkOpen(true); }}
           onBlur={() => setTimeout(() => setKkOpen(false), 200)}
         />
         <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
