@@ -33,7 +33,7 @@ import {
 import {
   Plus, Pencil, Trash2, Wallet, ArrowUpCircle, ArrowDownCircle,
   TrendingUp, Download, ChevronDown, ChevronUp, Filter, Save,
-  Archive, Eye, CheckCircle2, Restore,
+  Archive, Eye, CheckCircle2, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BULAN } from '@/lib/constants';
@@ -442,7 +442,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
                     <div className="flex items-center gap-1 shrink-0">
                       {b.summary?.transactions && (
                         <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-blue-600 hover:text-blue-800" onClick={() => handleRestoreBackup(b)}>
-                          <Restore className="h-3 w-3 mr-0.5" /> Tampilkan
+                          <RotateCcw className="h-3 w-3 mr-0.5" /> Tampilkan
                         </Button>
                       )}
                       <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-red-500 hover:text-red-700" onClick={() => handleDeleteBackup(b.id)}>
