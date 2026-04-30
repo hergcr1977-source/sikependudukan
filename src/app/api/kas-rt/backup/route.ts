@@ -77,11 +77,20 @@ export async function POST(request: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const body = await request.json();
-    const { bulan, tahun } = body;
     const rtId = auth.rtId || 1;
 
-    if (bulan === undefined || bulan === null || !tahun) {
-      return NextResponse.json({ error: 'Bulan dan tahun wajib diisi' }, { status: 400 });
+    // Parse bulan dan tahun dengan aman - handle string "0", number 0, dll
+    const bulan = Number(body.bulan);
+    const tahun = Number(body.tahun);
+
+    console.log('[backup] bulan:', bulan, 'tahun:', tahun, 'rtId:', rtId);
+
+    if (isNaN(bulan) || isNaN(tahun)) {
+      return NextResponse.json({ error: 'Format bulan/tahun tidak valid' }, { status: 400 });
+    }
+
+    if (tahun < 2000 || tahun > 2100) {
+      return NextResponse.json({ error: 'Tahun tidak valid' }, { status: 400 });
     }
 
     // Step 1: Pastikan tabel KasRT ada
@@ -99,39 +108,44 @@ export async function POST(request: NextRequest) {
         )
       `);
     } catch (createErr) {
-      console.error('Create KasRT table error (non-fatal):', createErr);
+      console.error('[backup] Create KasRT table (non-fatal):', createErr);
     }
 
-    // Step 2: Fetch kas data
-    const b = parseInt(bulan);
-    const t = parseInt(tahun);
+    // Step 2: Fetch kas data berdasarkan periode
+    // bulan = 0 artinya semua bulan dalam tahun tersebut
     let sql = 'SELECT * FROM "KasRT" WHERE "rtId" = $1';
     const params: any[] = [rtId];
     let paramIndex = 2;
 
-    if (b !== 0) {
-      const startDate = new Date(t, b - 1, 1);
-      const endDate = new Date(t, b, 0, 23, 59, 59);
+    if (bulan > 0) {
+      // Filter bulan tertentu
+      const startDate = new Date(tahun, bulan - 1, 1);
+      const endDate = new Date(tahun, bulan, 0, 23, 59, 59);
       sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
       params.push(startDate, endDate);
     } else {
-      const startDate = new Date(t, 0, 1);
-      const endDate = new Date(t, 11, 31, 23, 59, 59);
+      // Semua bulan dalam tahun tersebut
+      const startDate = new Date(tahun, 0, 1);
+      const endDate = new Date(tahun, 11, 31, 23, 59, 59);
       sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
       params.push(startDate, endDate);
     }
 
     sql += ' ORDER BY "tanggal" ASC';
+    console.log('[backup] SQL:', sql, 'params:', params);
+
     const kasData = await db.$queryRawUnsafe(sql, ...params);
+    const allKas = kasData as any[];
+
+    console.log('[backup] fetched', allKas.length, 'kas records');
 
     // Step 3: Calculate summary
-    const allKas = kasData as any[];
     const totalPemasukan = allKas.filter((k: any) => k.jenis === 'PEMASUKAN').reduce((s: number, k: any) => s + Number(k.jumlah), 0);
     const totalPengeluaran = allKas.filter((k: any) => k.jenis === 'PENGELUARAN').reduce((s: number, k: any) => s + Number(k.jumlah), 0);
     const saldo = totalPemasukan - totalPengeluaran;
 
     const backupData = {
-      period: { bulan: b, tahun: t },
+      period: { bulan, tahun },
       totalPemasukan,
       totalPengeluaran,
       saldo,
@@ -154,13 +168,13 @@ export async function POST(request: NextRequest) {
         )
       `);
     } catch (createErr) {
-      console.error('Create KasSnapshot table error (non-fatal):', createErr);
+      console.error('[backup] Create KasSnapshot table (non-fatal):', createErr);
     }
 
     // Step 5: Upsert snapshot
     const existing = await db.$queryRawUnsafe<Array<{ id: number }>>(
       `SELECT "id" FROM "KasSnapshot" WHERE "rtId" = $1 AND "bulan" = $2 AND "tahun" = $3`,
-      rtId, b, t
+      rtId, bulan, tahun
     );
 
     if (existing.length > 0) {
@@ -169,16 +183,18 @@ export async function POST(request: NextRequest) {
         JSON.stringify(backupData),
         existing[0].id
       );
+      console.log('[backup] updated existing snapshot id:', existing[0].id);
     } else {
       await db.$executeRawUnsafe(
         `INSERT INTO "KasSnapshot" ("rtId", "bulan", "tahun", "data") VALUES ($1, $2, $3, $4)`,
-        rtId, b, t, JSON.stringify(backupData)
+        rtId, bulan, tahun, JSON.stringify(backupData)
       );
+      console.log('[backup] inserted new snapshot');
     }
 
     return NextResponse.json({
       success: true,
-      message: `Backup kas ${b === 0 ? '' : `bulan ${bulan} `}tahun ${tahun} berhasil disimpan`,
+      message: `Backup kas ${bulan === 0 ? '' : `bulan ${bulan} `}tahun ${tahun} berhasil disimpan`,
       summary: {
         pemasukan: totalPemasukan,
         pengeluaran: totalPengeluaran,
@@ -206,7 +222,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
     }
 
-    // Verify ownership
     const existing = await db.$queryRawUnsafe<Array<{ id: number }>>(
       `SELECT "id" FROM "KasSnapshot" WHERE "id" = $1 AND "rtId" = $2`,
       id, rtId

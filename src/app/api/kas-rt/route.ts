@@ -114,6 +114,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/kas-rt error:', error);
     const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Gagal menambah data kas: ${msg}` }, { status: 500 });
+    return NextResponse.json({ error: `Gagal menambah data kas: ${error instanceof Error ? error.message : String(error)}` }, { status: 500 });
   }
 }

@@ -273,7 +273,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
       const res = await apiFetch('/api/kas-rt/backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bulan: parseInt(filterBulan), tahun: parseInt(filterTahun) }),
+        body: JSON.stringify({ bulan: Number(filterBulan), tahun: Number(filterTahun) }),
       });
       if (res.ok) {
         toast.success('Backup kas berhasil disimpan');
