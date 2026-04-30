@@ -163,6 +163,7 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [anggotaList, setAnggotaList] = useState<typeof defaultFormData[]>([]);
   const [expandedAnggota, setExpandedAnggota] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [resettingKTP17, setResettingKTP17] = useState(false);
 
   // Scan KK
   const [showScanDialog, setShowScanDialog] = useState(false);
@@ -271,17 +272,6 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   // Jalankan auto-update KTP saat pertama kali mount
   useEffect(() => {
     autoUpdateKTP();
-    // Sekali jalankan: reset KTP usia 17 thn dari PUNYA → BELUM
-    fetch('/api/penduduk/reset-ktp-17', { method: 'POST', credentials: 'include' })
-      .then(r => r.json())
-      .then(data => {
-        if (data.updated > 0) {
-          console.log(`[Reset KTP 17] ${data.updated} penduduk diubah ke BELUM`);
-          fetchPenduduk();
-          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
-        }
-      })
-      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1358,8 +1348,8 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
       </div>
 
       {/* Search & Filter */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Cari nama, NIK, No. KK..."
@@ -1368,6 +1358,35 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             className="pl-9"
           />
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            setResettingKTP17(true);
+            try {
+              const res = await apiFetch('/api/penduduk/reset-ktp-17', { method: 'POST' });
+              const data = await res.json();
+              if (data.updated > 0) {
+                toast.success(`${data.updated} penduduk usia 17 thn diubah ke BELUM`);
+                fetchPenduduk();
+                window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+              } else if (data.error) {
+                toast.error(data.error);
+              } else {
+                toast.info('Tidak ada penduduk usia 17 thn dengan status PUNYA');
+              }
+            } catch {
+              toast.error('Gagal reset KTP');
+            }
+            setResettingKTP17(false);
+          }}
+          disabled={resettingKTP17}
+          className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
+          title="Ubah semua penduduk usia 17 tahun dari PUNYA menjadi BELUM"
+        >
+          {resettingKTP17 && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+          Reset KTP 17 Thn
+        </Button>
         <div className="relative">
           <Button
             variant={activeFilter ? 'default' : 'outline'}
