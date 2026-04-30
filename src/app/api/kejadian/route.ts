@@ -42,7 +42,10 @@ export async function POST(request: NextRequest) {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
     const body = await request.json();
-    const { jenisKejadian, noKK, namaLengkap, nik, jenisKelamin, tanggal, keterangan } = body;
+    const {
+      jenisKejadian, noKK, namaLengkap, nik, jenisKelamin,
+      tanggal, keterangan, noKKBaru,
+    } = body;
 
     if (!jenisKejadian || !namaLengkap || !tanggal) {
       return NextResponse.json(
@@ -51,12 +54,152 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Simpan kejadian — murni catatan laporan, tidak mengubah data penduduk/KK
+    const rtId = auth.rtId || 1;
+    const jenis = toUpperCase(jenisKejadian);
+
+    // ===== SIDE EFFECTS =====
+
+    if (jenis === 'MATI') {
+      // --- MATI: Jika KKL meninggal, istri jadi KKL ---
+      if (noKK && nik) {
+        const deceased = await db.penduduk.findFirst({
+          where: { noKK, nik, rtId },
+        });
+
+        if (deceased && deceased.statusKeluarga === 'KEPALA KELUARGA') {
+          // Cari istri di KK yang sama
+          const wife = await db.penduduk.findFirst({
+            where: {
+              noKK,
+              rtId,
+              jenisKelamin: 'PEREMPUAN',
+              statusKeluarga: 'ISTRI',
+            },
+          });
+
+          if (wife) {
+            await db.penduduk.update({
+              where: { id: wife.id },
+              data: { statusKeluarga: 'KEPALA KELUARGA' },
+            });
+          } else {
+            // Jika tidak ada istri, cari anggota dewasa pertama
+            const otherMember = await db.penduduk.findFirst({
+              where: {
+                noKK,
+                rtId,
+                statusKeluarga: { not: 'KEPALA KELUARGA' },
+              },
+              orderBy: { createdAt: 'asc' },
+            });
+
+            if (otherMember) {
+              await db.penduduk.update({
+                where: { id: otherMember.id },
+                data: { statusKeluarga: 'KEPALA KELUARGA' },
+              });
+            }
+          }
+        }
+      }
+
+      // Update noKK jika ada perubahan
+      if (noKK && noKKBaru && noKKBaru !== noKK) {
+        await db.penduduk.updateMany({
+          where: { noKK, rtId },
+          data: { noKK: noKKBaru },
+        });
+      }
+    }
+
+    if (jenis === 'LAHIR') {
+      // --- LAHIR: Tambah penduduk baru ---
+      if (noKK && nik) {
+        const exists = await db.penduduk.findFirst({
+          where: { nik, rtId },
+        });
+
+        if (!exists) {
+          // Cari KKL untuk ambil info KK
+          const kepala = await db.penduduk.findFirst({
+            where: { noKK, statusKeluarga: 'KEPALA KELUARGA', rtId },
+          });
+
+          await db.penduduk.create({
+            data: {
+              noKK: noKKBaru || noKK,
+              nik,
+              namaLengkap: toUpperCase(namaLengkap),
+              jenisKelamin: toUpperCase(jenisKelamin) || 'LAKI-LAKI',
+              tanggalLahir: new Date(tanggal),
+              tempatLahir: '',
+              statusKeluarga: 'ANAK',
+              agama: kepala?.agama || 'ISLAM',
+              pendidikan: 'TIDAK/BELUM SEKOLAH',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              punyaKTP: 'BELUM',
+              rtId,
+            },
+          });
+        }
+      }
+
+      // Update noKK jika ada perubahan
+      if (noKK && noKKBaru && noKKBaru !== noKK) {
+        await db.penduduk.updateMany({
+          where: { noKK, rtId },
+          data: { noKK: noKKBaru },
+        });
+      }
+    }
+
+    if (jenis === 'PINDAH') {
+      // --- PINDAH: Murni catatan, tidak menghapus data penduduk ---
+    }
+
+    if (jenis === 'DATANG') {
+      // --- DATANG: Tambah penduduk baru ke KK tujuan atau buat KK baru ---
+      const anggotaBaru = body.anggotaBaru;
+      if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
+        const targetNoKK = noKKBaru || noKK;
+        for (const a of anggotaBaru) {
+          if (!a.nik || !a.namaLengkap) continue;
+
+          const exists = await db.penduduk.findFirst({
+            where: { nik: a.nik, rtId },
+          });
+          if (exists) continue;
+
+          await db.penduduk.create({
+            data: {
+              noKK: targetNoKK,
+              nik: a.nik,
+              namaLengkap: toUpperCase(a.namaLengkap),
+              jenisKelamin: toUpperCase(a.jenisKelamin) || 'LAKI-LAKI',
+              tanggalLahir: a.tanggalLahir ? new Date(a.tanggalLahir) : null,
+              tempatLahir: a.tempatLahir || '',
+              statusKeluarga: toUpperCase(a.statusKeluarga) || 'LAINNYA',
+              agama: a.agama || 'ISLAM',
+              pendidikan: a.pendidikan || 'TIDAK/BELUM SEKOLAH',
+              pekerjaan: a.pekerjaan || 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: a.statusPerkawinan || 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              punyaKTP: a.punyaKTP || 'BELUM',
+              rtId,
+            },
+          });
+        }
+      }
+    }
+
+    // Simpan catatan kejadian
     const data = await db.kejadian.create({
       data: {
-        rtId: auth.rtId || 1,
-        jenisKejadian: toUpperCase(jenisKejadian),
-        noKK: noKK || '',
+        rtId,
+        jenisKejadian: jenis,
+        noKK: noKKBaru || noKK || '',
         namaLengkap: toUpperCase(namaLengkap),
         nik: nik || null,
         jenisKelamin: toUpperCase(jenisKelamin) || '',
@@ -67,10 +210,12 @@ export async function POST(request: NextRequest) {
 
     revalidatePath('/api/kejadian');
     revalidatePath('/api/statistik');
+    revalidatePath('/api/penduduk');
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: 'Gagal menambah kejadian' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Gagal menambah kejadian: ${msg}` }, { status: 500 });
   }
 }
 
@@ -135,7 +280,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
-    // Hapus kejadian — murni catatan, tidak mempengaruhi data penduduk/KK
     await db.kejadian.delete({ where: { id } });
     revalidatePath('/api/kejadian');
     revalidatePath('/api/statistik');
