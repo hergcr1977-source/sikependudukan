@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { namaLengkap: { contains: search } },
-        { nik: { contains: search } },
-        { noKK: { contains: search } },
+        { namaLengkap: { contains: search, mode: 'insensitive' } },
+        { nik: { contains: search, mode: 'insensitive' } },
+        { noKK: { contains: search, mode: 'insensitive' } },
       ];
     }
     if (noKK) {

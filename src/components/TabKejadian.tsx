@@ -411,7 +411,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
       <div className="space-y-1">
         <Label className="text-xs">Keterangan</Label>
-        <Input className="text-sm" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Sebab/lokasi kematian" />
+        <Input className="text-sm uppercase" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value.toUpperCase() })} placeholder="Sebab/lokasi kematian" />
       </div>
 
       {renderNoKKBaru()}
@@ -460,7 +460,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
       <div className="space-y-1">
         <Label className="text-xs">Keterangan</Label>
-        <Input className="text-sm" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Lahir di RS, rumah, dll." />
+        <Input className="text-sm uppercase" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value.toUpperCase() })} placeholder="LAHIR DI RS, RUMAH, DLL." />
       </div>
 
       {renderNoKKBaru()}
@@ -508,7 +508,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
       <div className="space-y-1">
         <Label className="text-xs">Keterangan</Label>
-        <Input className="text-sm" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Pindah ke RT/RW mana, alasan, dll." />
+        <Input className="text-sm uppercase" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value.toUpperCase() })} placeholder="PINDAH KE RT/RW MANA, ALASAN, DLL." />
       </div>
     </div>
   );
@@ -629,7 +629,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
       <div className="space-y-1">
         <Label className="text-xs">Keterangan</Label>
-        <Input className="text-sm" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value })} placeholder="Asal pindah, alasan, dll." />
+        <Input className="text-sm uppercase" value={formData.keterangan || ''} onChange={e => setFormData({ ...formData, keterangan: e.target.value.toUpperCase() })} placeholder="ASAL PINDAH, ALASAN, DLL." />
       </div>
     </div>
   );

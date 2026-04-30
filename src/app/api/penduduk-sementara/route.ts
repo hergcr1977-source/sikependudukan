@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
     if (status) where.statusKeterangan = status;
     if (search) {
       where.OR = [
-        { namaLengkap: { contains: search } },
-        { alamatAsal: { contains: search } },
-        { noKK: { contains: search } },
-        { nik: { contains: search } },
+        { namaLengkap: { contains: search, mode: 'insensitive' } },
+        { alamatAsal: { contains: search, mode: 'insensitive' } },
+        { noKK: { contains: search, mode: 'insensitive' } },
+        { nik: { contains: search, mode: 'insensitive' } },
       ];
     }
 

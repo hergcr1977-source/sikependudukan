@@ -825,7 +825,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
             <Input
               placeholder="Cari nama, NIK, No. KK..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value.toUpperCase())}
               className="pl-9"
             />
           </div>
@@ -1046,7 +1046,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                         <Input
                           placeholder="Ketik nama penduduk..."
                           value={sembakoSearch}
-                          onChange={e => handleSembakoSearch(e.target.value)}
+                          onChange={e => handleSembakoSearch(e.target.value.toUpperCase())}
                           onFocus={e => { e.target.select(); if (sembakoSearchResults.length > 0) setShowSearchDropdown(true); }}
                           className="pl-9 pr-8 text-xs"
                         />
@@ -1316,7 +1316,7 @@ export default function TabBantuan({ isAdmin = true, isActive = false }: TabBant
                         <Input
                           placeholder="Contoh: Sembako Ramadhan 2026"
                           value={sembakoSaveName}
-                          onChange={e => setSembakoSaveName(e.target.value)}
+                          onChange={e => setSembakoSaveName(e.target.value.toUpperCase())}
                           className="text-xs"
                         />
                       </div>

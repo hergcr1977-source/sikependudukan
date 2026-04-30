@@ -1373,7 +1373,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
           <Input
             placeholder="Cari nama, NIK, No. KK..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value.toUpperCase())}
             className="pl-9"
           />
         </div>

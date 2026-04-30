@@ -813,7 +813,7 @@ export default function TabLaporan({ isAdmin = true, isActive = false }: TabLapo
                         className="w-full h-32 text-[11px] border-0 outline-none resize-none bg-transparent p-0"
                         placeholder="Tuliskan keterangan perubahan penduduk di sini..."
                         value={keterangan}
-                        onChange={(e) => setKeterangan(e.target.value)}
+                        onChange={(e) => setKeterangan(e.target.value.toUpperCase())}
                         onBlur={() => simpanKeterangan()}
                       />
                     </div>
