@@ -176,6 +176,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       tempatLahir: '',
       statusKeluarga: '',
     });
+    fetchKKOptions();
     setShowForm(true);
   };
 
@@ -194,6 +195,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       tempatLahir: '',
       statusKeluarga: '',
     });
+    fetchKKOptions();
     setShowForm(true);
   };
 
