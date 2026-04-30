@@ -1388,7 +1388,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             {!activeFilter && <ChevronDown className="h-3.5 w-3.5 ml-1" />}
           </Button>
           {showFilterMenu && (
-            <div className="absolute right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-56">
+            <div className="absolute right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-56 max-h-[70vh] overflow-y-auto">
               <button
                 type="button"
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${!activeFilter ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}
