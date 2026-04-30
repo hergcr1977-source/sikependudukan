@@ -356,7 +356,7 @@ export default function TabBeranda({ isAdmin = false, isActive = false }: TabBer
           <CardTitle className="text-sm font-semibold text-emerald-700">Kejadian Bulan Ini</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-3">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {(['LAHIR', 'MATI', 'PINDAH', 'DATANG'] as const).map((type) => {
               const d = statistik.kejadianCounts[type];
               const color = type === 'LAHIR' ? 'text-green-600 bg-green-50'

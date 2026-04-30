@@ -666,7 +666,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {JENIS_KEJADIAN.map(type => (
           <button
             key={type}

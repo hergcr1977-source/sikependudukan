@@ -419,7 +419,7 @@ export default function TabPendudukSementara({ isAdmin = true, isActive = false 
       </div>
 
       {/* Status counts */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
         {STATUS_KETERANGAN_SEMENTARA.map(status => (
           <button
             key={status}

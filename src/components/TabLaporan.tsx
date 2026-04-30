@@ -681,15 +681,15 @@ export default function TabLaporan({ isAdmin = true, isActive = false }: TabLapo
             ) : (
               <div className="space-y-1">
                 {savedLaporan.map(s => (
-                  <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <div key={s.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs gap-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                       <span className="font-medium">{BULAN[s.bulan - 1]} {s.tahun}</span>
                       <span className="text-gray-400">
                         (disimpan: {new Date(s.updatedAt).toLocaleDateString('id-ID')})
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => lihatLaporan(s.bulan, s.tahun)}>
                         <Eye className="h-3 w-3 mr-0.5" /> Lihat
                       </Button>
@@ -795,8 +795,8 @@ export default function TabLaporan({ isAdmin = true, isActive = false }: TabLapo
                   </div>
                 </div>
 
-                {/* Three tables side by side */}
-                <div className="flex gap-4">
+                {/* Three tables side by side - stacked on mobile */}
+                <div className="flex flex-col sm:flex-row gap-4 overflow-x-auto">
                   {renderLeftTable(laporanData)}
                   {renderRightTable(laporanData)}
                   {renderSummaryTable(laporanData)}

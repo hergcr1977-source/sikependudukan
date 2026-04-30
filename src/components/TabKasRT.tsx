@@ -518,7 +518,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardContent className="p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">

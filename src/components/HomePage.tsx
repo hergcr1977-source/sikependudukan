@@ -235,8 +235,9 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`w-full grid mb-3 h-auto bg-white border shadow-sm rounded-lg p-1 ${
-            isSuperAdmin ? 'grid-cols-5' : 'grid-cols-7'
+          <div className="overflow-x-auto -mx-4 px-4 mb-3">
+          <TabsList className={`w-full grid h-auto bg-white border shadow-sm rounded-lg p-1 ${
+            isSuperAdmin ? 'grid-cols-5 sm:grid-cols-10' : 'grid-cols-4 sm:grid-cols-7'
           }`}>
             {isSuperAdmin ? (
               <>
@@ -365,6 +366,7 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
               </>
             )}
           </TabsList>
+          </div>
 
           {/* Tab content: superadmin melihat semua tab (3 manajemen + 7 normal) */}
           <>
