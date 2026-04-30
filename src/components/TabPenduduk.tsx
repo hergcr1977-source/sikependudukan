@@ -271,6 +271,17 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   // Jalankan auto-update KTP saat pertama kali mount
   useEffect(() => {
     autoUpdateKTP();
+    // Sekali jalankan: reset KTP usia 17 thn dari PUNYA → BELUM
+    fetch('/api/penduduk/reset-ktp-17', { method: 'POST', credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.updated > 0) {
+          console.log(`[Reset KTP 17] ${data.updated} penduduk diubah ke BELUM`);
+          fetchPenduduk();
+          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+        }
+      })
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
