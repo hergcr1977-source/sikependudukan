@@ -245,41 +245,19 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
     return () => window.removeEventListener('sikependudukan-data-changed', handler);
   }, [fetchPenduduk]);
 
-  // Auto-refresh: usia dihitung ulang setiap menit & saat tab aktif
+  // Auto-refresh: data di-refresh setiap menit & saat tab aktif
   const lastRefresh = useAutoRefresh(() => {
     fetchPenduduk();
-    autoUpdateKTP();
   }, 60000); // refresh setiap 1 menit
 
-  // Auto-update punyaKTP berdasarkan usia saat ini
-  const autoUpdateKTP = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/penduduk/auto-update-ktp', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.updated > 0) {
-          console.log(`[Auto KTP] ${data.updated} penduduk diperbarui`);
-          // Re-fetch data setelah update KTP
-          fetchPenduduk();
-          window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
-        }
-      }
-    } catch {
-      // silent — tidak perlu tampilkan error
-    }
-  }, [fetchPenduduk]);
-
-  // Jalankan auto-update KTP saat pertama kali mount
-  useEffect(() => {
-    autoUpdateKTP();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Catatan: auto-update KTP SUDAH DINONAKTIFKAN.
+  // Status KTP sepenuhnya diatur oleh admin melalui form edit.
 
   useEffect(() => {
     if (isActive) {
       fetchPenduduk();
-      autoUpdateKTP();
     }
-  }, [isActive, fetchPenduduk, autoUpdateKTP]);
+  }, [isActive, fetchPenduduk]);
 
   // === SCAN KK: Rotasi gambar ===
   const rotateScanPreview = (direction: 'cw' | 'ccw') => {
