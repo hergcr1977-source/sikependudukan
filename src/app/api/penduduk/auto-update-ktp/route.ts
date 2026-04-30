@@ -9,10 +9,11 @@ export const dynamic = 'force-dynamic';
  * Auto-update status punyaKTP berdasarkan usia saat ini.
  * Dipanggil otomatis oleh frontend saat halaman dimuat / periodik.
  *
- * Logic:
- * - Usia < 17 tahun → punyaKTP = 'BELUM'
- * - Usia >= 17 tahun → punyaKTP = 'PUNYA'
+ * Logic (DIPERBAIKI - tidak memaksa PUNYA untuk umur 17+):
+ * - Usia < 17 tahun → punyaKTP = 'BELUM' (belum wajib)
+ * - Usia >= 17 tahun → JANGAN ubah, biarkan apa adanya (admin yang mengatur)
  * - Status RUSAK / HILANG tetap dipertahankan (tidak diubah)
+ * - Status null / empty → set berdasarkan usia
  */
 export async function POST() {
   try {
@@ -21,12 +22,9 @@ export async function POST() {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
-    // Ambil semua penduduk yang bukan RUSAK/HILANG
+    // Ambil semua penduduk
     const allPenduduk = await db.penduduk.findMany({
-      where: {
-        ...whereRT,
-        punyaKTP: { notIn: ['RUSAK', 'HILANG'] },
-      },
+      where: whereRT,
       select: { id: true, tanggalLahir: true, punyaKTP: true },
     });
 
@@ -35,12 +33,17 @@ export async function POST() {
 
     for (const p of allPenduduk) {
       if (!p.tanggalLahir) continue;
+
+      // Jika status sudah diisi oleh admin (PUNYA, BELUM, RUSAK, HILANG), JANGAN ubah
+      if (p.punyaKTP && ['PUNYA', 'BELUM', 'RUSAK', 'HILANG'].includes(p.punyaKTP)) {
+        continue;
+      }
+
+      // Hanya update jika status masih null/empty — set default berdasarkan usia
       try {
         const { umurTahun } = hitungUmur(p.tanggalLahir);
-        const shouldHave = umurTahun >= 17 ? 'PUNYA' : 'BELUM';
-        if (p.punyaKTP !== shouldHave) {
-          batch.push({ id: p.id, punyaKTP: shouldHave });
-        }
+        const defaultStatus = umurTahun >= 17 ? 'BELUM' : 'BELUM'; // default BELUM untuk semua
+        batch.push({ id: p.id, punyaKTP: defaultStatus });
       } catch {
         // skip invalid dates
       }

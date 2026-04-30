@@ -6,7 +6,8 @@ import { requireAdmin, isAuthError } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
-// One-time fix: update all penduduk KTP status based on age >= 17
+// One-time fix: hanya set default BELUM untuk penduduk yang belum punya status KTP
+// TIDAK memaksa PUNYA untuk umur 17+ — admin yang menentukan status KTP
 export async function POST() {
   try {
     const auth = await requireAdmin();
@@ -17,26 +18,22 @@ export async function POST() {
 
     let updated = 0;
     for (const p of allPenduduk) {
-      // Skip if already RUSAK or HILANG
-      if (p.punyaKTP === 'RUSAK' || p.punyaKTP === 'HILANG') continue;
+      // Skip jika sudah punya status yang valid
+      if (p.punyaKTP && ['PUNYA', 'BELUM', 'RUSAK', 'HILANG'].includes(p.punyaKTP)) continue;
 
-      const umur = hitungUmur(p.tanggalLahir);
-      const shouldHave = umur.umurTahun >= 17 ? 'PUNYA' : 'BELUM';
-
-      if (p.punyaKTP !== shouldHave) {
-        await db.penduduk.update({
-          where: { id: p.id },
-          data: { punyaKTP: shouldHave },
-        });
-        updated++;
-      }
+      // Set default BELUM untuk yang belum punya status
+      await db.penduduk.update({
+        where: { id: p.id },
+        data: { punyaKTP: 'BELUM' },
+      });
+      updated++;
     }
 
     revalidatePath('/api/penduduk');
     revalidatePath('/api/statistik');
 
     return NextResponse.json({
-      message: `Status KTP diperbarui untuk ${updated} penduduk`,
+      message: `Status KTP diperbarui untuk ${updated} penduduk (default BELUM)`,
       updated,
       totalChecked: allPenduduk.length,
     });

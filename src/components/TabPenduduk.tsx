@@ -603,7 +603,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
         namaAyah: kepala?.namaAyah || parsedData.namaAyah || '',
         namaIbu: kepala?.namaIbu || parsedData.namaIbu || '',
         namaPanggilan: '', noHP: '',
-        punyaKTP: kepala?.tanggalLahir && hitungUmur(kepala.tanggalLahir).umurTahun >= 17 ? 'PUNYA' : 'BELUM',
+        punyaKTP: 'BELUM', // default BELUM, admin yang menentukan
         bantuan: [], bpjs: '',
         alamat: parsedData.alamat || ALAMAT_DEFAULT,
         rt: parsedData.rt || RT_DEFAULT,
@@ -629,7 +629,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
         namaAyah: a.namaAyah || parsedData.namaAyah || '',
         namaIbu: a.namaIbu || parsedData.namaIbu || '',
         namaPanggilan: '', noHP: '',
-        punyaKTP: a.tanggalLahir && hitungUmur(a.tanggalLahir).umurTahun >= 17 ? 'PUNYA' : 'BELUM',
+        punyaKTP: 'BELUM', // default BELUM, admin yang menentukan
         bantuan: [], bpjs: '',
         alamat: parsedData.alamat || ALAMAT_DEFAULT,
         rt: parsedData.rt || RT_DEFAULT,
@@ -710,15 +710,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
     setAnggotaList(prev => prev.map((item, i) => {
       if (i !== index) return item;
       const next = { ...item, [field]: value };
-      // Auto-set punyaKTP = PUNYA jika usia >= 17 tahun
-      if (field === 'tanggalLahir' && value) {
-        const umur = hitungUmur(value as string);
-        if (umur.umurTahun >= 17) {
-          next.punyaKTP = 'PUNYA';
-        } else {
-          next.punyaKTP = 'BELUM';
-        }
-      }
+      // Jangan auto-override punyaKTP — admin yang menentukan status KTP
       return next;
     }));
   };
@@ -764,11 +756,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
       namaIbu: p.namaIbu,
       namaPanggilan: p.namaPanggilan || '',
       noHP: p.noHP || '',
-      punyaKTP: (() => {
-        if (p.punyaKTP === 'RUSAK' || p.punyaKTP === 'HILANG') return p.punyaKTP;
-        const umur = hitungUmur(p.tanggalLahir);
-        return umur.umurTahun >= 17 ? 'PUNYA' : p.punyaKTP;
-      })(),
+      punyaKTP: p.punyaKTP || 'BELUM',
       bantuan: JSON.parse(p.bantuan || '[]'),
       bpjs: p.bpjs || '',
       alamat: p.alamat || ALAMAT_DEFAULT,
@@ -1157,15 +1145,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
   const updateField = (field: string, value: string | string[]) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
-      // Auto-set punyaKTP = PUNYA jika usia >= 17 tahun
-      if (field === 'tanggalLahir' && value) {
-        const umur = hitungUmur(value as string);
-        if (umur.umurTahun >= 17) {
-          next.punyaKTP = 'PUNYA';
-        } else {
-          next.punyaKTP = 'BELUM';
-        }
-      }
+      // Jangan auto-override punyaKTP — admin yang menentukan status KTP
       // Auto-propagate ke semua anggota (mode KK_BARU)
       if (!editingId && addMode === 'KK_BARU' && anggotaList.length > 0) {
         const addrFields = ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten', 'provinsi'];
