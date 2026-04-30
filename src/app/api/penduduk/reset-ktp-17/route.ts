@@ -9,9 +9,17 @@ export const dynamic = 'force-dynamic';
 /**
  * Reset status KTP: ubah semua penduduk usia 17 tahun dari PUNYA → BELUM
  * Supaya admin mudah mengetahui siapa yang benar-benar sudah punya KTP.
- * Endpoint ini hanya dijalankan sekali, lalu bisa dihapus.
+ * Bisa dipanggil langsung dari browser (GET) atau POST.
  */
+export async function GET() {
+  return resetKTP17();
+}
+
 export async function POST() {
+  return resetKTP17();
+}
+
+async function resetKTP17() {
   try {
     const auth = await requireAdmin();
     if (isAuthError(auth)) return auth;
