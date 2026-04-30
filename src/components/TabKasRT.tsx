@@ -277,11 +277,13 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
       });
       if (res.ok) {
         toast.success('Backup kas berhasil disimpan');
-      loadBackupList();
+        loadBackupList();
       } else {
-        toast.error('Gagal menyimpan backup');
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || 'Gagal menyimpan backup');
       }
-    } catch {
+    } catch (e) {
+      console.error('Save backup error:', e);
       toast.error('Gagal menyimpan backup');
     } finally {
       setSavingBackup(false);

@@ -75,8 +75,26 @@ export async function POST(request: NextRequest) {
     const { bulan, tahun } = body;
     const rtId = auth.rtId || 1;
 
-    if (!bulan || !tahun) {
+    if (bulan === undefined || bulan === null || !tahun) {
       return NextResponse.json({ error: 'Bulan dan tahun wajib diisi' }, { status: 400 });
+    }
+
+    // Pastikan tabel KasRT ada
+    try {
+      await db.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "KasRT" (
+          "id" SERIAL PRIMARY KEY,
+          "rtId" INTEGER NOT NULL DEFAULT 1,
+          "tanggal" TIMESTAMP(3) NOT NULL,
+          "jenis" TEXT NOT NULL,
+          "jumlah" INTEGER NOT NULL,
+          "keterangan" TEXT NOT NULL DEFAULT '',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (e) {
+      // Table might already exist
     }
 
     // Fetch all kas data for the period (or all if bulan=0)
