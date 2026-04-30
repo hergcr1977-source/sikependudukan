@@ -47,7 +47,26 @@ export async function POST(request: NextRequest) {
       tanggal, keterangan, noKKBaru,
     } = body;
 
-    if (!jenisKejadian || !namaLengkap || !tanggal) {
+    // DATANG: namaLengkap boleh kosong di body utama, ambil dari anggotaBaru pertama
+    let finalNamaLengkap = namaLengkap || '';
+    let finalTanggal = tanggal || '';
+    const jenis = toUpperCase(jenisKejadian);
+
+    if (jenis === 'DATANG') {
+      const anggotaBaru = body.anggotaBaru;
+      if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
+        // Ambil nama dan tanggal dari anggota pertama sebagai fallback
+        const first = anggotaBaru[0];
+        if (!finalNamaLengkap && first.namaLengkap) {
+          finalNamaLengkap = first.namaLengkap;
+        }
+        if (!finalTanggal && first.tanggalLahir) {
+          finalTanggal = first.tanggalLahir;
+        }
+      }
+    }
+
+    if (!jenisKejadian || !finalNamaLengkap || !finalTanggal) {
       return NextResponse.json(
         { error: 'Jenis kejadian, nama, dan tanggal wajib diisi' },
         { status: 400 }
@@ -55,7 +74,6 @@ export async function POST(request: NextRequest) {
     }
 
     const rtId = auth.rtId || 1;
-    const jenis = toUpperCase(jenisKejadian);
 
     // ===== SIDE EFFECTS =====
 
@@ -200,10 +218,10 @@ export async function POST(request: NextRequest) {
         rtId,
         jenisKejadian: jenis,
         noKK: noKKBaru || noKK || '',
-        namaLengkap: toUpperCase(namaLengkap),
+        namaLengkap: toUpperCase(finalNamaLengkap),
         nik: nik || null,
         jenisKelamin: toUpperCase(jenisKelamin) || '',
-        tanggal: new Date(tanggal),
+        tanggal: new Date(finalTanggal),
         keterangan: keterangan || null,
       },
     });
