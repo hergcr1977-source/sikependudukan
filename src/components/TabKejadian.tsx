@@ -106,17 +106,8 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   // DATANG: anggota baru
   const [anggotaBaruList, setAnggotaBaruList] = useState<AnggotaBaru[]>([]);
 
-  // Close KK dropdown on scroll/resize
-  useEffect(() => {
-    if (!kkOpen) return;
-    const handleClose = () => setKkOpen(false);
-    window.addEventListener('scroll', handleClose, true);
-    window.addEventListener('resize', handleClose);
-    return () => {
-      window.removeEventListener('scroll', handleClose, true);
-      window.removeEventListener('resize', handleClose);
-    };
-  }, [kkOpen]);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetchKKOptions = useCallback(async () => {
     try {
@@ -321,19 +312,17 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   }, [kkOptions, formData.noKK]);
 
   const openKKDropdown = () => {
-    if (kkInputRef.current) {
-      const rect = kkInputRef.current.getBoundingClientRect();
-      // Fixed positioning = relatif ke viewport, JANGAN tambah scrollY
-      const dropdownHeight = Math.min(240, kkOptions.length * 36 + 8);
-      const spaceBelow = window.innerHeight - rect.bottom - 10;
-      const top = spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4;
-      setKkDropdownPos({
-        top,
-        left: rect.left,
-        width: rect.width,
-      });
-    }
-    setKkOpen(true);
+    // Gunakan setTimeout agar tidak bentrok dengan dialog focus management
+    setTimeout(() => {
+      if (kkInputRef.current) {
+        const rect = kkInputRef.current.getBoundingClientRect();
+        const dropdownHeight = Math.min(240, kkOptions.length * 36 + 8);
+        const spaceBelow = window.innerHeight - rect.bottom - 10;
+        const top = spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4;
+        setKkDropdownPos({ top, left: rect.left, width: rect.width });
+        setKkOpen(true);
+      }
+    }, 50);
   };
 
   const renderKKDropdown = (label: string, required = false) => (
@@ -353,11 +342,11 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
         />
         <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
       </div>
-      {kkOpen && kkDropdownPos && createPortal(
+      {mounted && kkOpen && kkDropdownPos && createPortal(
         <>
-          <div className="fixed inset-0 z-[100]" onMouseDown={() => setKkOpen(false)} />
+          <div className="fixed inset-0" style={{ zIndex: 99998 }} onMouseDown={() => setKkOpen(false)} />
           <div
-            className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl"
+            className="fixed bg-white border border-gray-200 rounded-lg shadow-xl"
             style={{ top: `${kkDropdownPos.top}px`, left: `${kkDropdownPos.left}px`, width: `${kkDropdownPos.width}px`, maxHeight: '240px', overflowY: 'auto', zIndex: 99999 }}
           >
             <div className="p-1" style={{ scrollbarWidth: 'thin' }}>
@@ -371,7 +360,8 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                     className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors border border-transparent hover:border-emerald-200"
                     onMouseDown={e => {
                       e.preventDefault();
-                      setFormData({ ...formData, noKK: kk.noKK });
+                      e.stopPropagation();
+                      setFormData(prev => ({ ...prev, noKK: kk.noKK }));
                       setKkOpen(false);
                     }}
                   >
