@@ -1331,8 +1331,8 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
         </div>
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Search */}
+      <div className="flex gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -1342,35 +1342,6 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             className="pl-9"
           />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            setResettingKTP17(true);
-            try {
-              const res = await apiFetch('/api/penduduk/reset-ktp-17', { method: 'POST' });
-              const data = await res.json();
-              if (data.updated > 0) {
-                toast.success(`${data.updated} penduduk usia 17 thn diubah ke BELUM`);
-                fetchPenduduk();
-                window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
-              } else if (data.error) {
-                toast.error(data.error);
-              } else {
-                toast.info('Tidak ada penduduk usia 17 thn dengan status PUNYA');
-              }
-            } catch {
-              toast.error('Gagal reset KTP');
-            }
-            setResettingKTP17(false);
-          }}
-          disabled={resettingKTP17}
-          className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
-          title="Ubah semua penduduk usia 17 tahun dari PUNYA menjadi BELUM"
-        >
-          {resettingKTP17 && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-          Reset KTP 17 Thn
-        </Button>
         <div className="relative">
           <Button
             variant={activeFilter ? 'default' : 'outline'}
@@ -1411,6 +1382,38 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             </div>
           )}
         </div>
+      </div>
+
+      {/* Tombol Aksi Khusus */}
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          onClick={async () => {
+            if (!confirm('Yakin ingin mengubah semua penduduk usia 17 tahun dari PUNYA menjadi BELUM?')) return;
+            setResettingKTP17(true);
+            try {
+              const res = await apiFetch('/api/penduduk/reset-ktp-17', { method: 'POST' });
+              const data = await res.json();
+              if (data.updated > 0) {
+                toast.success(`${data.updated} penduduk usia 17 thn diubah ke BELUM`);
+                fetchPenduduk();
+                window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
+              } else if (data.error) {
+                toast.error(data.error);
+              } else {
+                toast.info('Tidak ada penduduk usia 17 thn dengan status PUNYA');
+              }
+            } catch {
+              toast.error('Gagal reset KTP');
+            }
+            setResettingKTP17(false);
+          }}
+          disabled={resettingKTP17}
+          className="w-full border-orange-400 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+        >
+          {resettingKTP17 ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+          Reset KTP 17 Thn (PUNYA → BELUM)
+        </Button>
       </div>
       {activeFilter && (
         <div className="flex items-center gap-2">
