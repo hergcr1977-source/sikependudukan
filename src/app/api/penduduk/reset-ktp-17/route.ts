@@ -22,7 +22,7 @@ export async function POST() {
       where: {
         ...whereRT,
         punyaKTP: 'PUNYA',
-        tanggalLahir: { not: null, not: '' },
+        tanggalLahir: { not: null },
       },
       select: { id: true, namaLengkap: true, nik: true, tanggalLahir: true },
     });

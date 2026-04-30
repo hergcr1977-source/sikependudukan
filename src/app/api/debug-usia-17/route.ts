@@ -16,7 +16,7 @@ export async function GET() {
     const allPenduduk = await db.penduduk.findMany({
       where: {
         ...whereRT,
-        tanggalLahir: { not: null, not: '' },
+        tanggalLahir: { not: null },
       },
       select: {
         id: true,
