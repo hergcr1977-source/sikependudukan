@@ -164,8 +164,6 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const [anggotaList, setAnggotaList] = useState<typeof defaultFormData[]>([]);
   const [expandedAnggota, setExpandedAnggota] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
-  const [resettingKTP17, setResettingKTP17] = useState(false);
-
   // Scan KK
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -1382,44 +1380,6 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             </div>
           )}
         </div>
-      </div>
-
-      {/* Tombol Aksi Khusus */}
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          onClick={async () => {
-            if (!confirm('Yakin ingin mengubah semua penduduk usia 17 tahun dari PUNYA menjadi BELUM?')) return;
-            setResettingKTP17(true);
-            try {
-              const res = await apiFetch('/api/penduduk/reset-ktp-17', { method: 'POST' });
-              if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                toast.error(`Gagal: ${errData.error || res.status}`);
-                setResettingKTP17(false);
-                return;
-              }
-              const data = await res.json();
-              if (data.updated > 0) {
-                toast.success(`${data.updated} penduduk usia 17 thn diubah ke BELUM`);
-                fetchPenduduk();
-                window.dispatchEvent(new CustomEvent('sikependudukan-data-changed'));
-              } else if (data.error) {
-                toast.error(data.error);
-              } else {
-                toast.info('Tidak ada penduduk usia 17 thn dengan status PUNYA');
-              }
-            } catch {
-              toast.error('Gagal reset KTP');
-            }
-            setResettingKTP17(false);
-          }}
-          disabled={resettingKTP17}
-          className="w-full border-orange-400 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
-        >
-          {resettingKTP17 ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-          Reset KTP 17 Thn (PUNYA → BELUM)
-        </Button>
       </div>
       {activeFilter && (
         <div className="flex items-center gap-2">
