@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -97,21 +98,24 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
   const [kkOpen, setKkOpen] = useState(false);
-  const kkRef = useRef<HTMLDivElement>(null);
+  const [kkDropdownPos, setKkDropdownPos] = useState<{top: number; left: number; width: number} | null>(null);
+  const kkInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Kejadian | null>(null);
 
   // DATANG: anggota baru
   const [anggotaBaruList, setAnggotaBaruList] = useState<AnggotaBaru[]>([]);
 
-  // Click outside KK dropdown
+  // Close KK dropdown on scroll/resize
   useEffect(() => {
     if (!kkOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (kkRef.current && !kkRef.current.contains(e.target as Node)) setKkOpen(false);
+    const handleClose = () => setKkOpen(false);
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('resize', handleClose);
+    return () => {
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('resize', handleClose);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
   }, [kkOpen]);
 
   const fetchKKOptions = useCallback(async () => {
@@ -307,49 +311,75 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
     PINDAH: 'bg-orange-500', DATANG: 'bg-blue-500',
   };
 
-  const getFilteredKK = () => {
+  const getFilteredKK = useMemo(() => {
+    const search = (formData.noKK || '').toLowerCase();
+    if (!search) return kkOptions;
     return kkOptions.filter(kk =>
-      kk.noKK.includes(formData.noKK || '') ||
-      kk.namaKepala.toLowerCase().includes((formData.noKK || '').toLowerCase())
+      kk.noKK.includes(search) ||
+      kk.namaKepala.toLowerCase().includes(search)
     );
+  }, [kkOptions, formData.noKK]);
+
+  const openKKDropdown = () => {
+    if (kkInputRef.current) {
+      const rect = kkInputRef.current.getBoundingClientRect();
+      setKkDropdownPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+    setKkOpen(true);
   };
 
   const renderKKDropdown = (label: string, required = false) => (
-    <div ref={kkRef} className="space-y-1">
+    <div className="space-y-1">
       <Label className="text-xs">{label} {required && '*'}</Label>
       <div className="relative">
         <Input
+          ref={kkInputRef}
           className="text-sm pr-9"
-          placeholder="Ketik atau pilih No. KK"
+          placeholder="Klik untuk pilih atau ketik No. KK"
           value={formData.noKK || ''}
           onChange={e => {
             setFormData({ ...formData, noKK: e.target.value.replace(/[^0-9]/g, '').slice(0, 16) });
-            setKkOpen(true);
+            openKKDropdown();
           }}
-          onFocus={() => setKkOpen(true)}
+          onFocus={openKKDropdown}
         />
-        <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
       </div>
-      {kkOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl">
-          <div className="max-h-48 overflow-y-auto p-1" style={{ scrollbarWidth: 'thin' }}>
-            {getFilteredKK().length === 0 ? (
-              <div className="px-3 py-2.5 text-sm text-gray-400 text-center">Tidak ditemukan</div>
-            ) : (
-              getFilteredKK().map(kk => (
-                <button
-                  key={kk.noKK}
-                  type="button"
-                  className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors border border-transparent hover:border-emerald-200"
-                  onClick={() => { setFormData({ ...formData, noKK: kk.noKK }); setKkOpen(false); }}
-                >
-                  <span className="font-mono text-xs font-medium">{kk.noKK}</span>
-                  <span className="ml-2 text-xs text-gray-500">{kk.namaKepala}</span>
-                </button>
-              ))
-            )}
+      {kkOpen && kkDropdownPos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[100]" onMouseDown={() => setKkOpen(false)} />
+          <div
+            className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl"
+            style={{ top: `${kkDropdownPos.top}px`, left: `${kkDropdownPos.left}px`, width: `${kkDropdownPos.width}px`, maxHeight: '240px', overflowY: 'auto' }}
+          >
+            <div className="p-1" style={{ scrollbarWidth: 'thin' }}>
+              {getFilteredKK.length === 0 ? (
+                <div className="px-3 py-2.5 text-sm text-gray-400 text-center">Tidak ditemukan</div>
+              ) : (
+                getFilteredKK.map(kk => (
+                  <button
+                    key={kk.noKK}
+                    type="button"
+                    className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors border border-transparent hover:border-emerald-200"
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      setFormData({ ...formData, noKK: kk.noKK });
+                      setKkOpen(false);
+                    }}
+                  >
+                    <span className="font-mono text-xs font-medium">{kk.noKK}</span>
+                    <span className="ml-2 text-xs text-gray-500">{kk.namaKepala}</span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </>,
+        document.body
       )}
     </div>
   );
