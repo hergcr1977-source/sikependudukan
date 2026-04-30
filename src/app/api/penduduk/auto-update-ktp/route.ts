@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic';
  * Dipanggil otomatis oleh frontend saat halaman dimuat / periodik.
  *
  * Logic:
- * - Usia < 19 tahun → punyaKTP = 'BELUM'
- * - Usia >= 19 tahun → punyaKTP = 'PUNYA'
+ * - Usia < 17 tahun → punyaKTP = 'BELUM'
+ * - Usia >= 17 tahun → punyaKTP = 'PUNYA'
  * - Status RUSAK / HILANG tetap dipertahankan (tidak diubah)
  */
 export async function POST() {
@@ -37,7 +37,7 @@ export async function POST() {
       if (!p.tanggalLahir) continue;
       try {
         const { umurTahun } = hitungUmur(p.tanggalLahir);
-        const shouldHave = umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+        const shouldHave = umurTahun >= 17 ? 'PUNYA' : 'BELUM';
         if (p.punyaKTP !== shouldHave) {
           batch.push({ id: p.id, punyaKTP: shouldHave });
         }

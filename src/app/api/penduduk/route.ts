@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           if (punyaKTP === 'RUSAK' || punyaKTP === 'HILANG' || punyaKTP === 'PUNYA') return punyaKTP;
           if (tanggalLahir) {
             const umur = hitungUmur(new Date(tanggalLahir));
-            return umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+            return umur.umurTahun >= 17 ? 'PUNYA' : 'BELUM';
           }
           return punyaKTP || 'BELUM';
         })(),
@@ -188,7 +188,7 @@ export async function PUT(request: NextRequest) {
         const tgl = data.tanggalLahir || (await db.penduduk.findUnique({ where: { id }, select: { tanggalLahir: true } }))?.tanggalLahir;
         if (tgl) {
           const umur = hitungUmur(new Date(tgl));
-          updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+          updateData.punyaKTP = umur.umurTahun >= 17 ? 'PUNYA' : 'BELUM';
         } else {
           updateData.punyaKTP = data.punyaKTP;
         }
@@ -196,7 +196,7 @@ export async function PUT(request: NextRequest) {
     }
     if (data.tanggalLahir !== undefined && data.punyaKTP === undefined) {
       const umur = hitungUmur(new Date(data.tanggalLahir));
-      updateData.punyaKTP = umur.umurTahun >= 19 ? 'PUNYA' : 'BELUM';
+      updateData.punyaKTP = umur.umurTahun >= 17 ? 'PUNYA' : 'BELUM';
     }
     if (data.bantuan !== undefined) updateData.bantuan = JSON.stringify(data.bantuan);
     if (data.bpjs !== undefined) updateData.bpjs = data.bpjs || null;
