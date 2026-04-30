@@ -323,8 +323,12 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   const openKKDropdown = () => {
     if (kkInputRef.current) {
       const rect = kkInputRef.current.getBoundingClientRect();
+      // Fixed positioning = relatif ke viewport, JANGAN tambah scrollY
+      const dropdownHeight = Math.min(240, kkOptions.length * 36 + 8);
+      const spaceBelow = window.innerHeight - rect.bottom - 10;
+      const top = spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4;
       setKkDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
+        top,
         left: rect.left,
         width: rect.width,
       });
@@ -354,7 +358,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
           <div className="fixed inset-0 z-[100]" onMouseDown={() => setKkOpen(false)} />
           <div
             className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl"
-            style={{ top: `${kkDropdownPos.top}px`, left: `${kkDropdownPos.left}px`, width: `${kkDropdownPos.width}px`, maxHeight: '240px', overflowY: 'auto' }}
+            style={{ top: `${kkDropdownPos.top}px`, left: `${kkDropdownPos.left}px`, width: `${kkDropdownPos.width}px`, maxHeight: '240px', overflowY: 'auto', zIndex: 99999 }}
           >
             <div className="p-1" style={{ scrollbarWidth: 'thin' }}>
               {getFilteredKK.length === 0 ? (
