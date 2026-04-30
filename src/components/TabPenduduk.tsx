@@ -1393,6 +1393,12 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
             setResettingKTP17(true);
             try {
               const res = await apiFetch('/api/penduduk/reset-ktp-17', { method: 'POST' });
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                toast.error(`Gagal: ${errData.error || res.status}`);
+                setResettingKTP17(false);
+                return;
+              }
               const data = await res.json();
               if (data.updated > 0) {
                 toast.success(`${data.updated} penduduk usia 17 thn diubah ke BELUM`);
