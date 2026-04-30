@@ -5,6 +5,11 @@ import { BULAN } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
+function errorMsg(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 // GET /api/kas-rt/backup - List saved backups
 export async function GET(request: NextRequest) {
   try {
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(backups);
   } catch (error) {
     console.error('GET /api/kas-rt/backup error:', error);
-    return NextResponse.json({ error: 'Gagal mengambil riwayat backup' }, { status: 500 });
+    return NextResponse.json({ error: `Gagal mengambil riwayat backup: ${errorMsg(error)}` }, { status: 500 });
   }
 }
 
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Bulan dan tahun wajib diisi' }, { status: 400 });
     }
 
-    // Pastikan tabel KasRT ada
+    // Step 1: Pastikan tabel KasRT ada
     try {
       await db.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "KasRT" (
@@ -93,23 +98,25 @@ export async function POST(request: NextRequest) {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-    } catch (e) {
-      // Table might already exist
+    } catch (createErr) {
+      console.error('Create KasRT table error (non-fatal):', createErr);
     }
 
-    // Fetch all kas data for the period (or all if bulan=0)
+    // Step 2: Fetch kas data
+    const b = parseInt(bulan);
+    const t = parseInt(tahun);
     let sql = 'SELECT * FROM "KasRT" WHERE "rtId" = $1';
     const params: any[] = [rtId];
     let paramIndex = 2;
 
-    if (bulan && parseInt(bulan) !== 0) {
-      const startDate = new Date(parseInt(tahun), parseInt(bulan) - 1, 1);
-      const endDate = new Date(parseInt(tahun), parseInt(bulan), 0, 23, 59, 59);
+    if (b !== 0) {
+      const startDate = new Date(t, b - 1, 1);
+      const endDate = new Date(t, b, 0, 23, 59, 59);
       sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
       params.push(startDate, endDate);
     } else {
-      const startDate = new Date(parseInt(tahun), 0, 1);
-      const endDate = new Date(parseInt(tahun), 11, 31, 23, 59, 59);
+      const startDate = new Date(t, 0, 1);
+      const endDate = new Date(t, 11, 31, 23, 59, 59);
       sql += ` AND "tanggal" >= $${paramIndex++} AND "tanggal" <= $${paramIndex++}`;
       params.push(startDate, endDate);
     }
@@ -117,14 +124,14 @@ export async function POST(request: NextRequest) {
     sql += ' ORDER BY "tanggal" ASC';
     const kasData = await db.$queryRawUnsafe(sql, ...params);
 
-    // Calculate summary
+    // Step 3: Calculate summary
     const allKas = kasData as any[];
     const totalPemasukan = allKas.filter((k: any) => k.jenis === 'PEMASUKAN').reduce((s: number, k: any) => s + Number(k.jumlah), 0);
     const totalPengeluaran = allKas.filter((k: any) => k.jenis === 'PENGELUARAN').reduce((s: number, k: any) => s + Number(k.jumlah), 0);
     const saldo = totalPemasukan - totalPengeluaran;
 
     const backupData = {
-      period: { bulan: parseInt(bulan), tahun: parseInt(tahun) },
+      period: { bulan: b, tahun: t },
       totalPemasukan,
       totalPengeluaran,
       saldo,
@@ -133,7 +140,7 @@ export async function POST(request: NextRequest) {
       savedAt: new Date().toISOString(),
     };
 
-    // Ensure table exists
+    // Step 4: Pastikan tabel KasSnapshot ada
     try {
       await db.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "KasSnapshot" (
@@ -146,14 +153,11 @@ export async function POST(request: NextRequest) {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-    } catch (e) {
-      // Table might already exist
+    } catch (createErr) {
+      console.error('Create KasSnapshot table error (non-fatal):', createErr);
     }
 
-    // Upsert snapshot
-    const b = parseInt(bulan);
-    const t = parseInt(tahun);
-
+    // Step 5: Upsert snapshot
     const existing = await db.$queryRawUnsafe<Array<{ id: number }>>(
       `SELECT "id" FROM "KasSnapshot" WHERE "rtId" = $1 AND "bulan" = $2 AND "tahun" = $3`,
       rtId, b, t
@@ -174,7 +178,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Backup kas ${parseInt(bulan) === 0 ? '' : `bulan ${bulan} `}tahun ${tahun} berhasil disimpan`,
+      message: `Backup kas ${b === 0 ? '' : `bulan ${bulan} `}tahun ${tahun} berhasil disimpan`,
       summary: {
         pemasukan: totalPemasukan,
         pengeluaran: totalPengeluaran,
@@ -184,7 +188,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('POST /api/kas-rt/backup error:', error);
-    return NextResponse.json({ error: 'Gagal menyimpan backup kas' }, { status: 500 });
+    return NextResponse.json({ error: `Gagal menyimpan backup: ${errorMsg(error)}` }, { status: 500 });
   }
 }
 
@@ -217,6 +221,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ message: 'Backup berhasil dihapus' });
   } catch (error) {
     console.error('DELETE /api/kas-rt/backup error:', error);
-    return NextResponse.json({ error: 'Gagal menghapus backup' }, { status: 500 });
+    return NextResponse.json({ error: `Gagal menghapus backup: ${errorMsg(error)}` }, { status: 500 });
   }
 }

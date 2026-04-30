@@ -280,7 +280,7 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
         loadBackupList();
       } else {
         const errData = await res.json().catch(() => ({}));
-        toast.error(errData.error || 'Gagal menyimpan backup');
+        toast.error(errData.error || 'Gagal menyimpan backup', { duration: 8000 });
       }
     } catch (e) {
       console.error('Save backup error:', e);
