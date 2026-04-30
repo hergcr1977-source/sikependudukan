@@ -177,8 +177,6 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       statusKeluarga: '',
     });
     setShowForm(true);
-    // Auto buka dropdown KK setelah dialog render
-    setTimeout(() => setKkOpen(true), 150);
   };
 
   const openEdit = (k: Kejadian) => {
@@ -197,8 +195,6 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       statusKeluarga: '',
     });
     setShowForm(true);
-    // Auto buka dropdown KK setelah dialog render
-    setTimeout(() => setKkOpen(true), 150);
   };
 
   const handleSubmit = async () => {
