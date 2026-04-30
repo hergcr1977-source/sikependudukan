@@ -16,7 +16,6 @@ export async function GET() {
     const allPenduduk = await db.penduduk.findMany({
       where: {
         ...whereRT,
-        tanggalLahir: { not: null },
       },
       select: {
         id: true,
@@ -33,6 +32,7 @@ export async function GET() {
 
     // Cari yang usianya dekat 17 (16-18 tahun)
     const near17 = allPenduduk.filter(p => {
+      if (!p.tanggalLahir) return false;
       try {
         const { umurTahun } = hitungUmur(p.tanggalLahir);
         return umurTahun >= 15 && umurTahun <= 19;

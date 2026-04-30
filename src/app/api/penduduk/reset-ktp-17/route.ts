@@ -17,12 +17,11 @@ export async function POST() {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
-    // Ambil semua penduduk yang statusnya PUNYA dan punya tanggal lahir
+    // Ambil semua penduduk yang statusnya PUNYA
     const allPunya = await db.penduduk.findMany({
       where: {
         ...whereRT,
         punyaKTP: 'PUNYA',
-        tanggalLahir: { not: null },
       },
       select: { id: true, namaLengkap: true, nik: true, tanggalLahir: true },
     });
@@ -33,6 +32,7 @@ export async function POST() {
 
     for (const p of allPunya) {
       try {
+        if (!p.tanggalLahir) continue;
         const { umurTahun } = hitungUmur(String(p.tanggalLahir).split('T')[0]);
         if (umurTahun === 17) {
           toUpdate.push(p);
