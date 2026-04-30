@@ -253,9 +253,13 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
   const loadBackupList = async () => {
     try {
       const res = await apiFetch('/api/kas-rt/backup');
-      if (res.ok) setBackupList(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setBackupList(Array.isArray(data) ? data : []);
+      }
     } catch (error) {
       console.error(error);
+      setBackupList([]);
     }
   };
 
@@ -425,32 +429,35 @@ export default function TabKasRT({ isAdmin = true, isActive = false }: TabKasRTP
               <p className="text-xs text-gray-500">Belum ada backup tersimpan. Klik &quot;Simpan&quot; untuk menyimpan data kas saat ini.</p>
             ) : (
               <div className="space-y-1">
-                {backupList.map(b => (
-                  <div key={b.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                      <span className="font-medium truncate">{b.label}</span>
-                      {b.summary && (
+                {backupList.filter(b => b && b.id).map(b => {
+                  const summary = b.summary || {};
+                  return (
+                    <div key={b.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-50 rounded px-2 py-1.5 text-xs gap-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <span className="font-medium truncate">{b.label || '-'}</span>
+                        {summary.jumlahTransaksi !== undefined && (
+                          <span className="text-gray-400 shrink-0">
+                            ({summary.jumlahTransaksi || 0} transaksi · Saldo: {formatRupiah(summary.saldo || 0)})
+                          </span>
+                        )}
                         <span className="text-gray-400 shrink-0">
-                          ({b.summary.jumlahTransaksi || 0} transaksi · Saldo: {formatRupiah(b.summary.saldo || 0)})
+                          disimpan: {b.updatedAt ? new Date(b.updatedAt).toLocaleDateString('id-ID') : '-'}
                         </span>
-                      )}
-                      <span className="text-gray-400 shrink-0">
-                        disimpan: {new Date(b.updatedAt).toLocaleDateString('id-ID')}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {b.summary?.transactions && (
-                        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-blue-600 hover:text-blue-800" onClick={() => handleRestoreBackup(b)}>
-                          <RotateCcw className="h-3 w-3 mr-0.5" /> Tampilkan
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {summary.transactions && summary.transactions.length > 0 && (
+                          <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-blue-600 hover:text-blue-800" onClick={() => handleRestoreBackup(b)}>
+                            <RotateCcw className="h-3 w-3 mr-0.5" /> Tampilkan
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-red-500 hover:text-red-700" onClick={() => handleDeleteBackup(b.id)}>
+                          <Trash2 className="h-3 w-3 mr-0.5" /> Hapus
                         </Button>
-                      )}
-                      <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-red-500 hover:text-red-700" onClick={() => handleDeleteBackup(b.id)}>
-                        <Trash2 className="h-3 w-3 mr-0.5" /> Hapus
-                      </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
