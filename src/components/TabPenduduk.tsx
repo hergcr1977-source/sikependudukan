@@ -151,7 +151,8 @@ export default function TabPenduduk({ isAdmin = true, isActive = false }: TabPen
   const FILTER_OPTIONS = [
     { value: 'KK_PEREMPUAN', label: 'KK Perempuan', description: 'Kepala keluarga perempuan' },
     { value: 'KK_LAKI', label: 'KK Laki-laki', description: 'Kepala keluarga laki-laki' },
-    { value: 'WAJIB_KTP_17', label: 'Wajib KTP 17 Thn', description: 'Usia 17-18 tahun yang belum punya KTP' },
+    { value: 'WAJIB_KTP_17', label: 'Wajib KTP 17 Thn', description: 'Usia 17 tahun yang belum punya KTP' },
+    { value: 'USIA_17', label: 'Usia 17 Thn (Semua)', description: 'Semua penduduk usia 17 tahun' },
     { value: 'USIA_75', label: 'Usia 75+ Thn', description: 'Usia 75 tahun ke atas' },
     { value: 'LANSIA_60', label: 'Lansia 60+ Thn', description: 'Usia 60 tahun ke atas' },
     { value: 'BPJS_TIDAK_ADA', label: 'BPJS Tidak Ada', description: 'Tidak memiliki BPJS' },
@@ -1167,7 +1168,7 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
 
   // Filter logic: filter penduduk data based on activeFilter
   // isFlatFilter: true = filter menghasilkan daftar individu (bukan KK groups)
-  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP'].includes(activeFilter);
+  const isFlatFilter = ['WAJIB_KTP_17', 'USIA_17', 'USIA_75', 'LANSIA_60', 'BPJS_TIDAK_ADA', 'BELUM_KTP'].includes(activeFilter);
 
   const filteredGroups = (() => {
     if (!activeFilter) return kkGroups;
@@ -1202,6 +1203,11 @@ KEMBALIKAN HANYA JSON, tanpa markdown.`;
         case 'WAJIB_KTP_17': {
           if (!p.tanggalLahir) return false;
           if (p.punyaKTP === 'PUNYA') return false;
+          const u = hitungUmur(p.tanggalLahir);
+          return u.umurTahun === 17;
+        }
+        case 'USIA_17': {
+          if (!p.tanggalLahir) return false;
           const u = hitungUmur(p.tanggalLahir);
           return u.umurTahun === 17;
         }
