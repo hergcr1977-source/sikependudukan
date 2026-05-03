@@ -82,142 +82,26 @@ export async function POST(request: NextRequest) {
     // ===== SIDE EFFECTS =====
 
     if (jenis === 'MATI') {
-      // --- MATI: Jika KKL meninggal, istri jadi KKL ---
-      if (noKK && nik) {
-        const deceased = await db.penduduk.findFirst({
-          where: { noKK, nik, rtId },
-        });
-
-        if (deceased && deceased.statusKeluarga === 'KEPALA KELUARGA') {
-          // Cari istri di KK yang sama
-          const wife = await db.penduduk.findFirst({
-            where: {
-              noKK,
-              rtId,
-              jenisKelamin: 'PEREMPUAN',
-              statusKeluarga: 'ISTRI',
-            },
-          });
-
-          if (wife) {
-            await db.penduduk.update({
-              where: { id: wife.id },
-              data: { statusKeluarga: 'KEPALA KELUARGA' },
-            });
-          } else {
-            // Jika tidak ada istri, cari anggota dewasa pertama
-            const otherMember = await db.penduduk.findFirst({
-              where: {
-                noKK,
-                rtId,
-                statusKeluarga: { not: 'KEPALA KELUARGA' },
-              },
-              orderBy: { createdAt: 'asc' },
-            });
-
-            if (otherMember) {
-              await db.penduduk.update({
-                where: { id: otherMember.id },
-                data: { statusKeluarga: 'KEPALA KELUARGA' },
-              });
-            }
-          }
-        }
-      }
-
-      // Update noKK jika ada perubahan
-      if (noKK && noKKBaru && noKKBaru !== noKK) {
-        await db.penduduk.updateMany({
-          where: { noKK, rtId },
-          data: { noKK: noKKBaru },
-        });
-      }
+      // --- MATI: Murni catatan untuk laporan, tidak mengubah data penduduk ---
     }
 
     if (jenis === 'LAHIR') {
-      // --- LAHIR: Tambah penduduk baru ---
-      if (noKK && nik) {
-        const exists = await db.penduduk.findFirst({
-          where: { nik, rtId },
-        });
-
-        if (!exists) {
-          // Cari KKL untuk ambil info KK
-          const kepala = await db.penduduk.findFirst({
-            where: { noKK, statusKeluarga: 'KEPALA KELUARGA', rtId },
-          });
-
-          await db.penduduk.create({
-            data: {
-              noKK: noKKBaru || noKK,
-              nik,
-              namaLengkap: toUpperCase(namaLengkap),
-              jenisKelamin: toUpperCase(jenisKelamin) || 'LAKI-LAKI',
-              tanggalLahir: new Date(tanggal),
-              tempatLahir: '',
-              statusKeluarga: 'ANAK',
-              agama: kepala?.agama || 'ISLAM',
-              pendidikan: 'TIDAK/BELUM SEKOLAH',
-              pekerjaan: 'BELUM/TIDAK BEKERJA',
-              statusPerkawinan: 'BELUM MENIKAH',
-              kewarganegaraan: 'WNI',
-              punyaKTP: 'BELUM',
-              namaAyah: kepala?.namaAyah || '-',
-              namaIbu: kepala?.namaIbu || '-',
-              rtId,
-            },
-          });
-        }
-      }
-
-      // Update noKK jika ada perubahan
-      if (noKK && noKKBaru && noKKBaru !== noKK) {
-        await db.penduduk.updateMany({
-          where: { noKK, rtId },
-          data: { noKK: noKKBaru },
-        });
-      }
+      // --- LAHIR: Murni catatan untuk laporan, tidak menambah data penduduk ---
     }
 
     if (jenis === 'PINDAH') {
-      // --- PINDAH: Murni catatan, tidak menghapus data penduduk ---
+      // --- PINDAH: Hapus data penduduk dari database berdasarkan NIK ---
+      if (nik) {
+        try {
+          await db.penduduk.deleteMany({ where: { nik } });
+        } catch (_e) {
+          // Jika penduduk tidak ditemukan, tetap lanjutkan simpan kejadian
+        }
+      }
     }
 
     if (jenis === 'DATANG') {
-      // --- DATANG: Tambah penduduk baru ke KK tujuan atau buat KK baru ---
-      const anggotaBaru = body.anggotaBaru;
-      if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
-        const targetNoKK = noKKBaru || noKK;
-        for (const a of anggotaBaru) {
-          if (!a.nik || !a.namaLengkap) continue;
-
-          const exists = await db.penduduk.findFirst({
-            where: { nik: a.nik, rtId },
-          });
-          if (exists) continue;
-
-          await db.penduduk.create({
-            data: {
-              noKK: targetNoKK,
-              nik: a.nik,
-              namaLengkap: toUpperCase(a.namaLengkap),
-              jenisKelamin: toUpperCase(a.jenisKelamin) || 'LAKI-LAKI',
-              tanggalLahir: a.tanggalLahir ? new Date(a.tanggalLahir) : null,
-              tempatLahir: a.tempatLahir || '',
-              statusKeluarga: toUpperCase(a.statusKeluarga) || 'LAINNYA',
-              agama: a.agama || 'ISLAM',
-              pendidikan: a.pendidikan || 'TIDAK/BELUM SEKOLAH',
-              pekerjaan: a.pekerjaan || 'BELUM/TIDAK BEKERJA',
-              statusPerkawinan: a.statusPerkawinan || 'BELUM MENIKAH',
-              kewarganegaraan: 'WNI',
-              punyaKTP: a.punyaKTP || 'BELUM',
-              namaAyah: a.namaAyah || '-',
-              namaIbu: a.namaIbu || '-',
-              rtId,
-            },
-          });
-        }
-      }
+      // --- DATANG: Murni catatan untuk laporan, tidak menambah data penduduk ---
     }
 
     // Simpan catatan kejadian

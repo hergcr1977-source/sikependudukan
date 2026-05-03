@@ -93,13 +93,38 @@ export async function GET(request: NextRequest) {
     const sementaraL = activeSementara.filter(p => p.jenisKelamin === 'LAKI-LAKI').length;
     const sementaraP = activeSementara.filter(p => p.jenisKelamin === 'PEREMPUAN').length;
 
+    // Fix: Jika kejadian punya jenisKelamin kosong, cari dari data penduduk berdasarkan NIK
+    const emptyGenderKejadian = kejadian.filter(k => !k.jenisKelamin && k.nik);
+    const nikList = [...new Set(emptyGenderKejadian.map(k => k.nik!))];
+    const genderLookup: Record<string, string> = {};
+    if (nikList.length > 0) {
+      const pendudukList = await db.penduduk.findMany({
+        where: { nik: { in: nikList } },
+        select: { nik: true, jenisKelamin: true },
+      });
+      for (const p of pendudukList) {
+        genderLookup[p.nik] = p.jenisKelamin;
+      }
+    }
+
+    // Helper untuk mendapatkan jenisKelamin (fallback ke penduduk)
+    const getJk = (k: { jenisKelamin: string; nik: string | null }): string => {
+      if (k.jenisKelamin === 'LAKI-LAKI' || k.jenisKelamin === 'PEREMPUAN') {
+        return k.jenisKelamin;
+      }
+      if (k.nik && genderLookup[k.nik]) {
+        return genderLookup[k.nik];
+      }
+      return '';
+    };
+
     // Kejadian summary
     const kejadianSummary: Record<string, { l: number; p: number }> = {};
     for (const type of ['LAHIR', 'MATI', 'PINDAH', 'DATANG']) {
       const filtered = kejadian.filter(k => k.jenisKejadian === type);
       kejadianSummary[type] = {
-        l: filtered.filter(k => k.jenisKelamin === 'LAKI-LAKI').length,
-        p: filtered.filter(k => k.jenisKelamin === 'PEREMPUAN').length,
+        l: filtered.filter(k => getJk(k) === 'LAKI-LAKI').length,
+        p: filtered.filter(k => getJk(k) === 'PEREMPUAN').length,
       };
     }
 
