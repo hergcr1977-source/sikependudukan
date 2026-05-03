@@ -18,32 +18,6 @@ export async function GET(request: NextRequest) {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
-    // Cleanup: hapus penduduk dari kejadian MATI (selalu) dan PINDAH (kecuali sudah DATANG)
-    try {
-      const matiRecords = await db.kejadian.findMany({
-        where: { ...whereRT, jenisKejadian: 'MATI', nik: { not: null } },
-        select: { nik: true },
-      });
-      const pindahRecords = await db.kejadian.findMany({
-        where: { ...whereRT, jenisKejadian: 'PINDAH', nik: { not: null } },
-        select: { nik: true },
-      });
-      const datangRecords = await db.kejadian.findMany({
-        where: { ...whereRT, jenisKejadian: 'DATANG', nik: { not: null } },
-        select: { nik: true },
-      });
-      const matiNiks = [...new Set(matiRecords.map(r => r.nik!))];
-      const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
-      const datangNiks = new Set(datangRecords.map(r => r.nik!));
-      const pindahToDelete = pindahNiks.filter(nik => !datangNiks.has(nik));
-      const toDelete = [...new Set([...matiNiks, ...pindahToDelete])];
-      if (toDelete.length > 0) {
-        await db.penduduk.deleteMany({ where: { nik: { in: toDelete } } });
-      }
-    } catch (_e) {
-      // Jika gagal, tetap lanjutkan laporan
-    }
-
     const allPenduduk = await db.penduduk.findMany({ where: whereRT });
     const allSementara = await db.pendudukSementara.findMany({ where: whereRT });
     const startDate = new Date(tahun, bulan - 1, 1);
