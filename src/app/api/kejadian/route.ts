@@ -82,11 +82,63 @@ export async function POST(request: NextRequest) {
     // ===== SIDE EFFECTS =====
 
     if (jenis === 'MATI') {
-      // --- MATI: Murni catatan untuk laporan, tidak mengubah data penduduk ---
+      // --- MATI: Hapus data penduduk dari database berdasarkan NIK ---
+      if (nik) {
+        try {
+          await db.penduduk.deleteMany({ where: { nik } });
+        } catch (_e) {
+          // Jika penduduk tidak ditemukan, tetap lanjutkan simpan kejadian
+        }
+      }
     }
 
     if (jenis === 'LAHIR') {
-      // --- LAHIR: Murni catatan untuk laporan, tidak menambah data penduduk ---
+      // --- LAHIR: Tambah data penduduk baru (bayi) ke database ---
+      if (nik && namaLengkap) {
+        const finalNoKK = noKKBaru || noKK || '';
+        try {
+          // Ambil namaAyah dan namaIbu dari kepala KK
+          let namaAyah = '-';
+          let namaIbu = '-';
+          if (finalNoKK) {
+            const kkHead = await db.penduduk.findFirst({
+              where: { noKK: finalNoKK, statusKeluarga: 'KEPALA KELUARGA', rtId },
+            });
+            if (kkHead) {
+              namaAyah = kkHead.namaLengkap || '-';
+            }
+            // Cari istri sebagai namaIbu
+            const istri = await db.penduduk.findFirst({
+              where: { noKK: finalNoKK, jenisKelamin: 'PEREMPUAN', rtId },
+            });
+            if (istri) {
+              namaIbu = istri.namaLengkap || '-';
+            }
+          }
+          await db.penduduk.create({
+            data: {
+              rtId,
+              noKK: finalNoKK,
+              nik,
+              namaLengkap: toUpperCase(namaLengkap),
+              jenisKelamin: toUpperCase(jenisKelamin) || 'LAKI-LAKI',
+              statusKeluarga: 'ANAK',
+              tempatLahir: toUpperCase(body.tempatLahir) || '-',
+              tanggalLahir: tanggal ? new Date(tanggal) : new Date(),
+              agama: 'ISLAM',
+              pendidikan: 'TIDAK/BELUM SEKOLAH',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              namaAyah,
+              namaIbu,
+              punyaKTP: 'BELUM',
+            },
+          });
+        } catch (_e) {
+          // Jika NIK sudah ada, skip
+        }
+      }
     }
 
     if (jenis === 'PINDAH') {
