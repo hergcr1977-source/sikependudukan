@@ -101,7 +101,38 @@ export async function POST(request: NextRequest) {
     }
 
     if (jenis === 'DATANG') {
-      // --- DATANG: Murni catatan untuk laporan, tidak menambah data penduduk ---
+      // --- DATANG: Tambah data penduduk dari anggotaBaru ---
+      const anggotaBaru = body.anggotaBaru;
+      if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
+        const finalNoKK = noKKBaru || noKK || '';
+        for (const a of anggotaBaru) {
+          if (!a.nik || !a.namaLengkap) continue;
+          try {
+            await db.penduduk.create({
+              data: {
+                rtId,
+                noKK: finalNoKK,
+                nik: a.nik,
+                namaLengkap: toUpperCase(a.namaLengkap),
+                jenisKelamin: toUpperCase(a.jenisKelamin) || 'LAKI-LAKI',
+                statusKeluarga: toUpperCase(a.statusKeluarga) || 'LAINNYA',
+                tempatLahir: toUpperCase(a.tempatLahir) || '-',
+                tanggalLahir: a.tanggalLahir ? new Date(a.tanggalLahir) : new Date(),
+                agama: toUpperCase(a.agama) || 'ISLAM',
+                pendidikan: toUpperCase(a.pendidikan) || 'TIDAK/BELUM SEKOLAH',
+                pekerjaan: toUpperCase(a.pekerjaan) || 'BELUM/TIDAK BEKERJA',
+                statusPerkawinan: toUpperCase(a.statusPerkawinan) || 'BELUM MENIKAH',
+                kewarganegaraan: toUpperCase(a.kewarganegaraan) || 'WNI',
+                namaAyah: toUpperCase(a.namaAyah) || '-',
+                namaIbu: toUpperCase(a.namaIbu) || '-',
+                punyaKTP: a.punyaKTP || 'BELUM',
+              },
+            });
+          } catch (_e) {
+            // Jika NIK sudah ada, skip — penduduk sudah terdaftar
+          }
+        }
+      }
     }
 
     // Simpan catatan kejadian
