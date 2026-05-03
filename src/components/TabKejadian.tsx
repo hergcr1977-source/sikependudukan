@@ -223,6 +223,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
     }
     if (jenis === 'DATANG') {
       if (!formData.noKK && !formData.noKKBaru) { setFormError('No. KK tujuan wajib diisi'); return; }
+      if (!formData.tanggal) { setFormError('Tanggal kejadian wajib diisi'); return; }
       if (anggotaBaruList.length === 0) { setFormError('Tambahkan minimal 1 anggota keluarga'); return; }
       const hasComplete = anggotaBaruList.some(a => a.nik && a.namaLengkap);
       if (!hasComplete) { setFormError('NIK dan Nama anggota wajib diisi'); return; }
@@ -504,8 +505,9 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs">Tanggal Pindah *</Label>
+        <Label className="text-xs">Tanggal Kejadian (Pindah) *</Label>
         <Input type="date" className="text-sm" value={formData.tanggal || ''} onChange={e => setFormData({ ...formData, tanggal: e.target.value })} />
+        <p className="text-[10px] text-gray-400">Isi tanggal sebenarnya saat kejadian terjadi. Menentukan laporan bulan mana kejadian ini masuk.</p>
       </div>
 
       <div className="space-y-1">
@@ -525,6 +527,12 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       </div>
 
       {renderKKDropdown('No. KK Tujuan (pilih jika sudah ada)')}
+
+      <div className="space-y-1">
+        <Label className="text-xs">Tanggal Kejadian (Datang) *</Label>
+        <Input type="date" className="text-sm" value={formData.tanggal || ''} onChange={e => setFormData({ ...formData, tanggal: e.target.value })} />
+        <p className="text-[10px] text-gray-400">Isi tanggal sebenarnya saat kejadian terjadi. Menentukan laporan bulan mana kejadian ini masuk.</p>
+      </div>
 
       <div className="space-y-1">
         <Label className="text-xs">No. KK Baru (jika belum ada, buat baru)</Label>
