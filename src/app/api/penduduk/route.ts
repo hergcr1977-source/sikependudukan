@@ -27,6 +27,21 @@ export async function GET(request: NextRequest) {
       where.rtId = parseInt(searchParams.get('rtId')!);
     }
 
+    // Cleanup: hapus penduduk yang sudah ada kejadian PINDAH-nya
+    try {
+      const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
+      const pindahRecords = await db.kejadian.findMany({
+        where: { ...whereRT, jenisKejadian: 'PINDAH', nik: { not: null } },
+        select: { nik: true },
+      });
+      const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
+      if (pindahNiks.length > 0) {
+        await db.penduduk.deleteMany({ where: { nik: { in: pindahNiks } } });
+      }
+    } catch (_e) {
+      // Jika gagal, tetap lanjutkan
+    }
+
     if (search) {
       where.OR = [
         { namaLengkap: { contains: search, mode: 'insensitive' } },

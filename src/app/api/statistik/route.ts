@@ -12,6 +12,20 @@ export async function GET() {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
+    // Cleanup: hapus penduduk yang sudah ada kejadian PINDAH-nya
+    try {
+      const pindahRecords = await db.kejadian.findMany({
+        where: { ...whereRT, jenisKejadian: 'PINDAH', nik: { not: null } },
+        select: { nik: true },
+      });
+      const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
+      if (pindahNiks.length > 0) {
+        await db.penduduk.deleteMany({ where: { nik: { in: pindahNiks } } });
+      }
+    } catch (_e) {
+      // Jika gagal, tetap lanjutkan
+    }
+
     const allPenduduk = await db.penduduk.findMany({ where: whereRT });
     const allSementara = await db.pendudukSementara.findMany({
       where: { ...whereRT, tanggalKeluar: null },
@@ -80,12 +94,31 @@ export async function GET() {
       where: { ...whereRT, tanggal: { gte: startDate, lte: endDate } },
     });
 
+    // Fix: fallback jenisKelamin dari penduduk jika kejadian kosong
+    const emptyGender = kejadianBulanIni.filter(k => !k.jenisKelamin && k.nik);
+    const nikList = [...new Set(emptyGender.map(k => k.nik!))];
+    const genderLookup: Record<string, string> = {};
+    if (nikList.length > 0) {
+      const pendudukByNik = await db.penduduk.findMany({
+        where: { nik: { in: nikList } },
+        select: { nik: true, jenisKelamin: true },
+      });
+      for (const p of pendudukByNik) {
+        genderLookup[p.nik] = p.jenisKelamin;
+      }
+    }
+    const getJk = (k: { jenisKelamin: string; nik: string | null }): string => {
+      if (k.jenisKelamin === 'LAKI-LAKI' || k.jenisKelamin === 'PEREMPUAN') return k.jenisKelamin;
+      if (k.nik && genderLookup[k.nik]) return genderLookup[k.nik];
+      return '';
+    };
+
     const kejadianCounts: Record<string, { l: number; p: number }> = {};
     for (const type of ['LAHIR', 'MATI', 'PINDAH', 'DATANG']) {
       const filtered = kejadianBulanIni.filter(k => k.jenisKejadian === type);
       kejadianCounts[type] = {
-        l: filtered.filter(k => k.jenisKelamin === 'LAKI-LAKI').length,
-        p: filtered.filter(k => k.jenisKelamin === 'PEREMPUAN').length,
+        l: filtered.filter(k => getJk(k) === 'LAKI-LAKI').length,
+        p: filtered.filter(k => getJk(k) === 'PEREMPUAN').length,
       };
     }
 
