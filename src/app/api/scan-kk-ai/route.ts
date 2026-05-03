@@ -169,36 +169,9 @@ export async function POST(request: NextRequest) {
 // Server-side resize gambar menggunakan Canvas (sharp tidak tersedia di Vercel)
 // ============================================================
 async function resizeImageServer(dataUrl: string, maxDim: number, quality: number): Promise<string> {
-  // Parse data URL
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) return dataUrl;
-
-  const base64Data = matches[2];
-  const buffer = Buffer.from(base64Data, 'base64');
-  const imgSizeKb = buffer.length / 1024;
-
-  // Jika sudah kecil (di bawah 500KB), tidak perlu resize
-  if (imgSizeKb < 500) return dataUrl;
-
-  // Gunakan dynamic import untuk sharp atau canvas
-  // Di Vercel, kita gunakan approach sederhana: decode, resize, encode
-  // Tanpa library tambahan, kita crop/reduce kualitas saja
-  // Import sharp jika tersedia
-  try {
-    // Coba pakai sharp (fast, available di Vercel)
-    const sharp = (await import('sharp')).default;
-    const resized = await sharp(buffer)
-      .resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: Math.round(quality * 100) })
-      .toBuffer();
-    const resizedB64 = resized.toString('base64');
-    console.log(`[Scan KK] Resized: ${Math.round(imgSizeKb)}KB → ${Math.round(resized.length / 1024)}KB`);
-    return `data:image/jpeg;base64,${resizedB64}`;
-  } catch {
-    // Sharp tidak tersedia, gunakan canvas API via node
-    console.log('[Scan KK] sharp tidak tersedia, skip resize');
-    return dataUrl;
-  }
+  // Resize tidak tersedia di environment ini (sharp tidak terinstall)
+  // Kirim gambar asli — untuk gambar besar, Gemini API tetap bisa memproses
+  return dataUrl;
 }
 
 // ============================================================
