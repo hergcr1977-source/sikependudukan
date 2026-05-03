@@ -48,31 +48,27 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // DATANG: namaLengkap, jenisKelamin, nik boleh kosong di body utama, ambil dari anggotaBaru pertama
+    const jenis = toUpperCase(jenisKejadian);
     let finalNamaLengkap = namaLengkap || '';
     let finalJenisKelamin = jenisKelamin || '';
     let finalNik = nik || '';
     let finalTanggal = tanggal || '';
-    const jenis = toUpperCase(jenisKejadian);
 
     if (jenis === 'DATANG') {
       const anggotaBaru = body.anggotaBaru;
+      console.log('[DATANG POST] nik dari body:', nik, '| anggotaBaru count:', anggotaBaru?.length, '| anggotaBaru NIKs:', anggotaBaru?.map((a: any) => a.nik));
       if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
-        // Ambil nama, jenis kelamin, nik, dan tanggal dari anggota pertama sebagai fallback
-        const first = anggotaBaru[0];
-        if (!finalNamaLengkap && first.namaLengkap) {
-          finalNamaLengkap = first.namaLengkap;
-        }
-        if (!finalJenisKelamin && first.jenisKelamin) {
-          finalJenisKelamin = first.jenisKelamin;
-        }
-        if (!finalNik && first.nik) {
-          finalNik = first.nik;
-        }
-        if (!finalTanggal && first.tanggalLahir) {
-          finalTanggal = first.tanggalLahir;
-        }
+        // Cari anggota pertama yang punya NIK dan namaLengkap
+        const first = anggotaBaru.find((a: any) => a.nik && a.namaLengkap) || anggotaBaru[0];
+        // SELALU ambil dari anggotaBaru untuk DATANG — lebih reliable
+        if (first.namaLengkap) finalNamaLengkap = first.namaLengkap;
+        if (first.jenisKelamin) finalJenisKelamin = first.jenisKelamin;
+        if (first.nik) finalNik = first.nik;
+        if (first.tanggalLahir) finalTanggal = first.tanggalLahir;
       }
     }
+
+    console.log('[KEJADIAN POST] jenis:', jenis, '| finalNik:', finalNik, '| finalNama:', finalNamaLengkap, '| finalTanggal:', finalTanggal);
 
     if (!jenisKejadian || !finalNamaLengkap || !finalTanggal) {
       return NextResponse.json(

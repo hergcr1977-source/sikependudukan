@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+
+// Form version - forces chunk hash change on update
+const _DATANG_FORM_VERSION = 'v5.20260504';
+void _DATANG_FORM_VERSION;
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -71,6 +75,8 @@ interface AnggotaBaru {
   pendidikan: string;
   pekerjaan: string;
   statusPerkawinan: string;
+  namaAyah: string;
+  namaIbu: string;
   punyaKTP: string;
 }
 
@@ -83,7 +89,7 @@ const emptyAnggotaBaru = (): AnggotaBaru => ({
   nik: '', namaLengkap: '', jenisKelamin: 'LAKI-LAKI', tanggalLahir: '',
   tempatLahir: '', statusKeluarga: 'LAINNYA', agama: 'ISLAM',
   pendidikan: 'TIDAK/BELUM SEKOLAH', pekerjaan: 'BELUM/TIDAK BEKERJA',
-  statusPerkawinan: 'BELUM MENIKAH', punyaKTP: 'BELUM',
+  statusPerkawinan: 'BELUM MENIKAH', namaAyah: '', namaIbu: '', punyaKTP: 'BELUM',
 });
 
 export default function TabKejadian({ isAdmin = true, isActive = false }: TabKejadianProps) {
@@ -100,6 +106,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
   const kkInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Kejadian | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // DATANG: anggota baru
   const [anggotaBaruList, setAnggotaBaruList] = useState<AnggotaBaru[]>([]);
@@ -160,6 +167,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
   const openAdd = () => {
     setFormError('');
+    setEditingId(null);
     setAnggotaKK([]);
     setAnggotaBaruList([]);
     const today = new Date().toISOString().split('T')[0];
@@ -182,6 +190,28 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
 
   const openEdit = (k: Kejadian) => {
     setFormError('');
+    setEditingId(k.id);
+    setAnggotaBaruList([]);
+
+    // DATANG: isi anggotaBaruList dari data kejadian
+    if (k.jenisKejadian === 'DATANG' && k.nik) {
+      setAnggotaBaruList([{
+        nik: k.nik,
+        namaLengkap: k.namaLengkap,
+        jenisKelamin: k.jenisKelamin || 'LAKI-LAKI',
+        tanggalLahir: k.tanggal.split('T')[0],
+        tempatLahir: '',
+        statusKeluarga: 'LAINNYA',
+        agama: 'ISLAM',
+        pendidikan: 'TIDAK/BELUM SEKOLAH',
+        pekerjaan: 'BELUM/TIDAK BEKERJA',
+        statusPerkawinan: 'BELUM MENIKAH',
+        namaAyah: '',
+        namaIbu: '',
+        punyaKTP: 'BELUM',
+      }]);
+    }
+
     setFormData({
       jenisKejadian: k.jenisKejadian,
       noKK: k.noKK || '',
@@ -191,7 +221,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       tanggal: k.tanggal.split('T')[0],
       keterangan: k.keterangan || '',
       noKKBaru: '',
-      tanggalLahir: '',
+      tanggalLahir: k.jenisKejadian === 'LAHIR' ? k.tanggal.split('T')[0] : '',
       tempatLahir: '',
       statusKeluarga: '',
     });
@@ -230,6 +260,7 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
     }
 
     try {
+      const isEdit = !!editingId;
       const body: Record<string, unknown> = {
         jenisKejadian: jenis,
         noKK: formData.noKK || '',
@@ -241,19 +272,31 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
         noKKBaru: formData.noKKBaru || '',
       };
 
-      // DATANG: kirim anggota baru
-      if (jenis === 'DATANG') {
-        body.anggotaBaru = anggotaBaruList;
+      if (isEdit) {
+        body.id = editingId;
       }
 
+      // DATANG: kirim anggota baru, dan update nik/nama dari anggota pertama
+      if (jenis === 'DATANG') {
+        body.anggotaBaru = anggotaBaruList;
+        if (anggotaBaruList.length > 0 && anggotaBaruList[0].nik) {
+          body.nik = anggotaBaruList[0].nik;
+          body.namaLengkap = anggotaBaruList[0].namaLengkap;
+          body.jenisKelamin = anggotaBaruList[0].jenisKelamin;
+        }
+        console.log('[DATANG SUBMIT] anggotaBaruList:', JSON.stringify(anggotaBaruList.map(a => ({ nik: a.nik, nama: a.namaLengkap }))));
+        console.log('[DATANG SUBMIT] body.nik:', body.nik, '| body.namaLengkap:', body.namaLengkap);
+      }
+
+      const method = isEdit ? 'PUT' : 'POST';
       const res = await apiFetch('/api/kejadian', {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (res.ok) {
         const result = await res.json();
-        let msg = `Kejadian ${jenis} ditambahkan`;
+        let msg = `Kejadian ${jenis} ${isEdit ? 'diperbarui' : 'ditambahkan'}`;
         if (jenis === 'MATI' && result.kkChanged) {
           msg += '. Kepala Keluarga otomatis diganti ke anggota keluarga.';
         }
@@ -632,6 +675,27 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
                   <SelectContent>{PEKERJAAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
+              <div className="space-y-0.5">
+                <label className="text-[10px] text-gray-500">Pendidikan</label>
+                <Select value={a.pendidikan} onValueChange={v => {
+                  const updated = [...anggotaBaruList]; updated[idx] = { ...updated[idx], pendidikan: v }; setAnggotaBaruList(updated);
+                }}>
+                  <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PENDIDIKAN.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-0.5 col-span-2">
+                <label className="text-[10px] text-gray-500">Nama Ayah</label>
+                <Input className="text-xs h-8 uppercase" value={a.namaAyah} onChange={e => {
+                  const updated = [...anggotaBaruList]; updated[idx] = { ...updated[idx], namaAyah: e.target.value.toUpperCase() }; setAnggotaBaruList(updated);
+                }} placeholder="-" />
+              </div>
+              <div className="space-y-0.5 col-span-2">
+                <label className="text-[10px] text-gray-500">Nama Ibu</label>
+                <Input className="text-xs h-8 uppercase" value={a.namaIbu} onChange={e => {
+                  const updated = [...anggotaBaruList]; updated[idx] = { ...updated[idx], namaIbu: e.target.value.toUpperCase() }; setAnggotaBaruList(updated);
+                }} placeholder="-" />
+              </div>
             </div>
           </div>
         ))}
@@ -742,12 +806,12 @@ export default function TabKejadian({ isAdmin = true, isActive = false }: TabKej
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-lg max-h-[90vh]" style={{ overflowY: kkOpen ? 'visible' : 'auto' }}>
           <DialogHeader>
-            <DialogTitle>Tambah Kejadian — {activeTab}</DialogTitle>
+            <DialogTitle>{editingId ? `Edit Kejadian` : `Tambah Kejadian`} — {activeTab}</DialogTitle>
           </DialogHeader>
           {renderActiveForm()}
           <div className="flex gap-2 pt-2">
             <Button onClick={handleSubmit} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-              Simpan {activeTab}
+              {editingId ? `Update ${activeTab}` : `Simpan ${activeTab}`}
             </Button>
             <Button variant="outline" onClick={() => setShowForm(false)}>Batal</Button>
           </div>

@@ -24,8 +24,8 @@ const nextConfig = {
         ],
       },
       {
-        // Semua halaman HTML - JANGAN cache (supaya auth selalu dicek)
-        source: '/:path((?!_next/static|_next/image|favicon|logo|manifest|sitemap|robots).*)',
+        // Semua halaman dan asset - JANGAN cache
+        source: '/:path((?!_next/image|favicon|logo|manifest|sitemap|robots).*)',
         headers: [
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
           { key: 'Pragma', value: 'no-cache' },

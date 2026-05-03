@@ -38,6 +38,90 @@ export async function GET(request: NextRequest) {
       where.noKK = noKK;
     }
 
+    // ===== AUTO-SYNC: DATANG & LAHIR kejadian → penduduk =====
+    // Hanya buat penduduk jika belum ada (idempotent, aman jika kejadian dihapus nanti)
+    // MATI & PINDAH TIDAK di-sync di sini — hapus kejadian tidak boleh mengembalikan penduduk
+    const syncRtId = auth.rtId || undefined;
+
+    // DATANG: buat penduduk dari kejadian DATANG yang punya NIK
+    const datangList = await db.kejadian.findMany({
+      where: { jenisKejadian: 'DATANG', nik: { not: null }, ...(syncRtId ? { rtId: syncRtId } : {}) },
+    });
+    for (const k of datangList) {
+      if (!k.nik) continue;
+      try {
+        const existing = await db.penduduk.findUnique({ where: { nik: k.nik } });
+        if (!existing) {
+          await db.penduduk.create({
+            data: {
+              rtId: k.rtId,
+              noKK: k.noKK || '',
+              nik: k.nik,
+              namaLengkap: toUpperCase(k.namaLengkap),
+              jenisKelamin: toUpperCase(k.jenisKelamin) || 'LAKI-LAKI',
+              statusKeluarga: 'LAINNYA',
+              tempatLahir: '-',
+              tanggalLahir: k.tanggal,
+              agama: 'ISLAM',
+              pendidikan: '-',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              namaAyah: '-',
+              namaIbu: '-',
+              punyaKTP: 'BELUM',
+            },
+          });
+        }
+      } catch (_e) { /* NIK sudah ada atau error, skip */ }
+    }
+
+    // LAHIR: buat penduduk dari kejadian LAHIR yang punya NIK
+    const lahirList = await db.kejadian.findMany({
+      where: { jenisKejadian: 'LAHIR', nik: { not: null }, ...(syncRtId ? { rtId: syncRtId } : {}) },
+    });
+    for (const k of lahirList) {
+      if (!k.nik) continue;
+      try {
+        const existing = await db.penduduk.findUnique({ where: { nik: k.nik } });
+        if (!existing) {
+          let namaAyah = '-';
+          let namaIbu = '-';
+          if (k.noKK) {
+            const kkHead = await db.penduduk.findFirst({
+              where: { noKK: k.noKK, statusKeluarga: 'KEPALA KELUARGA', rtId: k.rtId },
+            });
+            if (kkHead) namaAyah = kkHead.namaLengkap || '-';
+            const istri = await db.penduduk.findFirst({
+              where: { noKK: k.noKK, jenisKelamin: 'PEREMPUAN', rtId: k.rtId },
+            });
+            if (istri) namaIbu = istri.namaLengkap || '-';
+          }
+          await db.penduduk.create({
+            data: {
+              rtId: k.rtId,
+              noKK: k.noKK || '',
+              nik: k.nik,
+              namaLengkap: toUpperCase(k.namaLengkap),
+              jenisKelamin: toUpperCase(k.jenisKelamin) || 'LAKI-LAKI',
+              statusKeluarga: 'ANAK',
+              tempatLahir: '-',
+              tanggalLahir: k.tanggal,
+              agama: 'ISLAM',
+              pendidikan: 'TIDAK/BELUM SEKOLAH',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              namaAyah,
+              namaIbu,
+              punyaKTP: 'BELUM',
+            },
+          });
+        }
+      } catch (_e) { /* NIK sudah ada atau error, skip */ }
+    }
+    // ===== END AUTO-SYNC =====
+
     const penduduk = await db.penduduk.findMany({
       where,
       orderBy: { noKK: 'asc' },

@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     apple: "/logo.png",
   },
   other: {
-    "x-app-version": "v4-client-puter-20260429",
+    "x-app-version": "v5-datang-form-20260504",
   },
 };
 
