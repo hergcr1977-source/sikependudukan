@@ -27,8 +27,7 @@ export async function GET(request: NextRequest) {
       where.rtId = parseInt(searchParams.get('rtId')!);
     }
 
-    // Cleanup: hapus penduduk yang sudah ada kejadian MATI atau PINDAH-nya,
-    // KECHUALI yang sudah ada kejadian DATANG (sudah kembali)
+    // Cleanup: hapus penduduk dari kejadian MATI (selalu) dan PINDAH (kecuali sudah DATANG)
     try {
       const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
       const matiRecords = await db.kejadian.findMany({
@@ -43,12 +42,65 @@ export async function GET(request: NextRequest) {
         where: { ...whereRT, jenisKejadian: 'DATANG', nik: { not: null } },
         select: { nik: true },
       });
-      const hapusNiks = [...new Set([...matiRecords, ...pindahRecords].map(r => r.nik!))];
+      // MATI: selalu hapus
+      const matiNiks = [...new Set(matiRecords.map(r => r.nik!))];
+      // PINDAH: hapus kecuali sudah DATANG (sudah kembali)
+      const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
       const datangNiks = new Set(datangRecords.map(r => r.nik!));
-      // Hanya hapus NIK yang MATI/PINDAH tapi belum DATANG (belum kembali)
-      const toDelete = hapusNiks.filter(nik => !datangNiks.has(nik));
+      const pindahToDelete = pindahNiks.filter(nik => !datangNiks.has(nik));
+      // Gabungkan MATI + PINDAH yang harus dihapus
+      const toDelete = [...new Set([...matiNiks, ...pindahToDelete])];
       if (toDelete.length > 0) {
         await db.penduduk.deleteMany({ where: { nik: { in: toDelete } } });
+      }
+    } catch (_e) {
+      // Jika gagal, tetap lanjutkan
+    }
+
+    // Cleanup LAHIR: buat penduduk dari kejadian LAHIR lama yang belum punya penduduk
+    try {
+      const whereRT2 = auth.rtId ? { rtId: auth.rtId } : {};
+      const lahirRecords = await db.kejadian.findMany({
+        where: { ...whereRT2, jenisKejadian: 'LAHIR', nik: { not: null } },
+      });
+      for (const k of lahirRecords) {
+        if (!k.nik || !k.noKK) continue;
+        const exists = await db.penduduk.findFirst({ where: { nik: k.nik } });
+        if (exists) continue;
+        try {
+          let namaAyah = '-';
+          let namaIbu = '-';
+          const kkHead = await db.penduduk.findFirst({
+            where: { noKK: k.noKK, statusKeluarga: 'KEPALA KELUARGA' },
+          });
+          if (kkHead) namaAyah = kkHead.namaLengkap || '-';
+          const istri = await db.penduduk.findFirst({
+            where: { noKK: k.noKK, jenisKelamin: 'PEREMPUAN' },
+          });
+          if (istri) namaIbu = istri.namaLengkap || '-';
+          await db.penduduk.create({
+            data: {
+              rtId: k.rtId,
+              noKK: k.noKK,
+              nik: k.nik,
+              namaLengkap: k.namaLengkap,
+              jenisKelamin: k.jenisKelamin || 'LAKI-LAKI',
+              statusKeluarga: 'ANAK',
+              tempatLahir: '-',
+              tanggalLahir: k.tanggal,
+              agama: 'ISLAM',
+              pendidikan: 'TIDAK/BELUM SEKOLAH',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: 'BELUM MENIKAH',
+              kewarganegaraan: 'WNI',
+              namaAyah,
+              namaIbu,
+              punyaKTP: 'BELUM',
+            },
+          });
+        } catch (_e) {
+          // skip jika gagal
+        }
       }
     } catch (_e) {
       // Jika gagal, tetap lanjutkan

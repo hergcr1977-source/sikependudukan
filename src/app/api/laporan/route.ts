@@ -18,8 +18,7 @@ export async function GET(request: NextRequest) {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
-    // Fix MATI/PINDAH lama: hapus penduduk yang belum terhapus dari kejadian MATI/PINDAH,
-    // KECHUALI yang sudah ada kejadian DATANG (sudah kembali)
+    // Cleanup: hapus penduduk dari kejadian MATI (selalu) dan PINDAH (kecuali sudah DATANG)
     try {
       const matiRecords = await db.kejadian.findMany({
         where: { ...whereRT, jenisKejadian: 'MATI', nik: { not: null } },
@@ -33,9 +32,11 @@ export async function GET(request: NextRequest) {
         where: { ...whereRT, jenisKejadian: 'DATANG', nik: { not: null } },
         select: { nik: true },
       });
-      const hapusNiks = [...new Set([...matiRecords, ...pindahRecords].map(r => r.nik!))];
+      const matiNiks = [...new Set(matiRecords.map(r => r.nik!))];
+      const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
       const datangNiks = new Set(datangRecords.map(r => r.nik!));
-      const toDelete = hapusNiks.filter(nik => !datangNiks.has(nik));
+      const pindahToDelete = pindahNiks.filter(nik => !datangNiks.has(nik));
+      const toDelete = [...new Set([...matiNiks, ...pindahToDelete])];
       if (toDelete.length > 0) {
         await db.penduduk.deleteMany({ where: { nik: { in: toDelete } } });
       }
