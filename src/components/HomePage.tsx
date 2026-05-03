@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LayoutDashboard, Users, UserRound, CalendarDays, FileSpreadsheet, Shield, Wallet, LogOut, Settings, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, UserRound, CalendarDays, FileSpreadsheet, Shield, Wallet, LogOut, Settings, Building2, FileText } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 
 const TabBeranda = dynamic(() => import('@/components/TabBeranda'), { ssr: false });
@@ -14,6 +14,7 @@ const TabLaporan = dynamic(() => import('@/components/TabLaporan'), { ssr: false
 const TabBantuan = dynamic(() => import('@/components/TabBantuan'), { ssr: false });
 const TabKasRT = dynamic(() => import('@/components/TabKasRT'), { ssr: false });
 const TabSuperAdmin = dynamic(() => import('@/components/TabSuperAdmin'), { ssr: false });
+const TabDokumenRT = dynamic(() => import('@/components/TabDokumenRT'), { ssr: false });
 
 interface RTInfo {
   namaRT: string;
@@ -237,7 +238,7 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="overflow-x-auto -mx-4 px-4 mb-3">
           <TabsList className={`w-full grid h-auto bg-white border shadow-sm rounded-lg p-1 ${
-            isSuperAdmin ? 'grid-cols-5 sm:grid-cols-10' : 'grid-cols-4 sm:grid-cols-7'
+            isSuperAdmin ? 'grid-cols-5 sm:grid-cols-11' : 'grid-cols-4 sm:grid-cols-8'
           }`}>
             {isSuperAdmin ? (
               <>
@@ -311,6 +312,13 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
                   <Wallet className="h-4 w-4" />
                   <span>Kas RT</span>
                 </TabsTrigger>
+                <TabsTrigger
+                  value="dokumen"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-purple-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Dokumen</span>
+                </TabsTrigger>
               </>
             ) : (
               <>
@@ -363,6 +371,13 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
                   <Wallet className="h-4 w-4" />
                   <span>Kas RT</span>
                 </TabsTrigger>
+                <TabsTrigger
+                  value="dokumen"
+                  className="flex flex-col items-center gap-0.5 py-2 px-1 data-[state=active]:bg-emerald-600 data-[state=active]:text-white rounded-md text-[10px] sm:text-xs"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Dokumen</span>
+                </TabsTrigger>
               </>
             )}
           </TabsList>
@@ -399,6 +414,9 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
             </TabsContent>
             <TabsContent value="kas">
               <TabKasRT isAdmin={true} isActive={activeTab === 'kas'} />
+            </TabsContent>
+            <TabsContent value="dokumen">
+              <TabDokumenRT isAdmin={isAdmin} isActive={activeTab === 'dokumen'} />
             </TabsContent>
           </>
         </Tabs>
