@@ -106,6 +106,45 @@ export async function GET(request: NextRequest) {
       // Jika gagal, tetap lanjutkan
     }
 
+    // Cleanup DATANG: buat penduduk dari kejadian DATANG lama yang punya NIK tapi belum ada di penduduk
+    try {
+      const whereRT3 = auth.rtId ? { rtId: auth.rtId } : {};
+      const datangRecords = await db.kejadian.findMany({
+        where: { ...whereRT3, jenisKejadian: 'DATANG', nik: { not: null } },
+      });
+      for (const k of datangRecords) {
+        if (!k.nik) continue;
+        const exists = await db.penduduk.findFirst({ where: { nik: k.nik } });
+        if (exists) continue;
+        try {
+          await db.penduduk.create({
+            data: {
+              rtId: k.rtId,
+              noKK: k.noKK,
+              nik: k.nik,
+              namaLengkap: k.namaLengkap,
+              jenisKelamin: k.jenisKelamin || 'LAKI-LAKI',
+              statusKeluarga: 'LAINNYA',
+              tempatLahir: '-',
+              tanggalLahir: k.tanggal,
+              agama: 'ISLAM',
+              pendidikan: '-',
+              pekerjaan: 'BELUM/TIDAK BEKERJA',
+              statusPerkawinan: '-',
+              kewarganegaraan: 'WNI',
+              namaAyah: '-',
+              namaIbu: '-',
+              punyaKTP: 'BELUM',
+            },
+          });
+        } catch (_e) {
+          // skip jika gagal
+        }
+      }
+    } catch (_e) {
+      // Jika gagal, tetap lanjutkan
+    }
+
     if (search) {
       where.OR = [
         { namaLengkap: { contains: search, mode: 'insensitive' } },
