@@ -158,6 +158,8 @@ export async function POST(request: NextRequest) {
               statusPerkawinan: 'BELUM MENIKAH',
               kewarganegaraan: 'WNI',
               punyaKTP: 'BELUM',
+              namaAyah: kepala?.namaAyah || '-',
+              namaIbu: kepala?.namaIbu || '-',
               rtId,
             },
           });
@@ -205,6 +207,8 @@ export async function POST(request: NextRequest) {
               statusPerkawinan: a.statusPerkawinan || 'BELUM MENIKAH',
               kewarganegaraan: 'WNI',
               punyaKTP: a.punyaKTP || 'BELUM',
+              namaAyah: a.namaAyah || '-',
+              namaIbu: a.namaIbu || '-',
               rtId,
             },
           });
