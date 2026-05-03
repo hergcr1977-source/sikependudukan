@@ -47,18 +47,22 @@ export async function POST(request: NextRequest) {
       tanggal, keterangan, noKKBaru,
     } = body;
 
-    // DATANG: namaLengkap boleh kosong di body utama, ambil dari anggotaBaru pertama
+    // DATANG: namaLengkap, jenisKelamin boleh kosong di body utama, ambil dari anggotaBaru pertama
     let finalNamaLengkap = namaLengkap || '';
+    let finalJenisKelamin = jenisKelamin || '';
     let finalTanggal = tanggal || '';
     const jenis = toUpperCase(jenisKejadian);
 
     if (jenis === 'DATANG') {
       const anggotaBaru = body.anggotaBaru;
       if (anggotaBaru && Array.isArray(anggotaBaru) && anggotaBaru.length > 0) {
-        // Ambil nama dan tanggal dari anggota pertama sebagai fallback
+        // Ambil nama, jenis kelamin, dan tanggal dari anggota pertama sebagai fallback
         const first = anggotaBaru[0];
         if (!finalNamaLengkap && first.namaLengkap) {
           finalNamaLengkap = first.namaLengkap;
+        }
+        if (!finalJenisKelamin && first.jenisKelamin) {
+          finalJenisKelamin = first.jenisKelamin;
         }
         if (!finalTanggal && first.tanggalLahir) {
           finalTanggal = first.tanggalLahir;
@@ -224,7 +228,7 @@ export async function POST(request: NextRequest) {
         noKK: noKKBaru || noKK || '',
         namaLengkap: toUpperCase(finalNamaLengkap),
         nik: nik || null,
-        jenisKelamin: toUpperCase(jenisKelamin) || '',
+        jenisKelamin: toUpperCase(finalJenisKelamin) || '',
         tanggal: new Date(finalTanggal),
         keterangan: keterangan || null,
       },
