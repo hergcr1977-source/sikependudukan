@@ -27,16 +27,24 @@ export async function GET(request: NextRequest) {
       where.rtId = parseInt(searchParams.get('rtId')!);
     }
 
-    // Cleanup: hapus penduduk yang sudah ada kejadian PINDAH-nya
+    // Cleanup: hapus penduduk yang sudah ada kejadian PINDAH-nya,
+    // KECHUALI yang sudah ada kejadian DATANG (sudah kembali)
     try {
       const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
       const pindahRecords = await db.kejadian.findMany({
         where: { ...whereRT, jenisKejadian: 'PINDAH', nik: { not: null } },
         select: { nik: true },
       });
+      const datangRecords = await db.kejadian.findMany({
+        where: { ...whereRT, jenisKejadian: 'DATANG', nik: { not: null } },
+        select: { nik: true },
+      });
       const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
-      if (pindahNiks.length > 0) {
-        await db.penduduk.deleteMany({ where: { nik: { in: pindahNiks } } });
+      const datangNiks = new Set(datangRecords.map(r => r.nik!));
+      // Hanya hapus NIK yang PINDAH tapi belum DATANG (belum kembali)
+      const toDelete = pindahNiks.filter(nik => !datangNiks.has(nik));
+      if (toDelete.length > 0) {
+        await db.penduduk.deleteMany({ where: { nik: { in: toDelete } } });
       }
     } catch (_e) {
       // Jika gagal, tetap lanjutkan

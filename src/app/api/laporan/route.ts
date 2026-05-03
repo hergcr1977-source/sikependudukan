@@ -18,15 +18,22 @@ export async function GET(request: NextRequest) {
 
     const whereRT = auth.rtId ? { rtId: auth.rtId } : {};
 
-    // Fix PINDAH lama: hapus penduduk yang belum terhapus dari kejadian PINDAH yang sudah ada
+    // Fix PINDAH lama: hapus penduduk yang belum terhapus dari kejadian PINDAH,
+    // KECHUALI yang sudah ada kejadian DATANG (sudah kembali)
     try {
       const pindahRecords = await db.kejadian.findMany({
         where: { ...whereRT, jenisKejadian: 'PINDAH', nik: { not: null } },
         select: { nik: true },
       });
+      const datangRecords = await db.kejadian.findMany({
+        where: { ...whereRT, jenisKejadian: 'DATANG', nik: { not: null } },
+        select: { nik: true },
+      });
       const pindahNiks = [...new Set(pindahRecords.map(r => r.nik!))];
-      if (pindahNiks.length > 0) {
-        await db.penduduk.deleteMany({ where: { nik: { in: pindahNiks } } });
+      const datangNiks = new Set(datangRecords.map(r => r.nik!));
+      const toDelete = pindahNiks.filter(nik => !datangNiks.has(nik));
+      if (toDelete.length > 0) {
+        await db.penduduk.deleteMany({ where: { nik: { in: toDelete } } });
       }
     } catch (_e) {
       // Jika gagal, tetap lanjutkan laporan
