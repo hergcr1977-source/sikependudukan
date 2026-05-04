@@ -13,7 +13,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/admin/register') ||
     pathname.startsWith('/api/setup-auth') ||
     pathname.startsWith('/api/setup-db') ||
-    pathname.startsWith('/api/setup-surat-pengantar')
+    pathname.startsWith('/api/setup-surat-pengantar') ||
+    pathname.startsWith('/api/debug-db-url')
   ) {
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
