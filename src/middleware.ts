@@ -14,7 +14,9 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/setup-auth') ||
     pathname.startsWith('/api/setup-db') ||
     pathname.startsWith('/api/setup-surat-pengantar') ||
-    pathname.startsWith('/api/debug-db-url')
+    pathname.startsWith('/api/debug-db-url') ||
+    pathname === '/api/download-apk' ||
+    pathname === '/SIKEPENDUDUKAN-Offline.apk'
   ) {
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
