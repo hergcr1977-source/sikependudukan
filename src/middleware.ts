@@ -11,7 +11,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/wa') ||
     pathname.startsWith('/api/admin/register') ||
-    pathname.startsWith('/api/setup-auth')
+    pathname.startsWith('/api/setup-auth') ||
+    pathname.startsWith('/api/setup-db')
   ) {
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

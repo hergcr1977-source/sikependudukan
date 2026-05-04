@@ -132,6 +132,34 @@ export async function GET() {
       }
     }
 
+    // SuratPengantar table - create if not exists
+    try {
+      const spCheck = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
+        `SELECT table_name FROM information_schema.tables WHERE table_name = 'suratpengantar'`
+      );
+      if (spCheck.length === 0) {
+        await db.$executeRawUnsafe(`
+          CREATE TABLE "SuratPengantar" (
+            "id" SERIAL PRIMARY KEY,
+            "rtId" INTEGER NOT NULL DEFAULT 1,
+            "nomorSurat" TEXT NOT NULL,
+            "namaPemohon" TEXT NOT NULL,
+            "nik" TEXT NOT NULL,
+            "tujuan" TEXT NOT NULL,
+            "keterangan" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        results.push('Created table SuratPengantar');
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('already exists')) {
+        results.push(`Error creating SuratPengantar: ${msg.substring(0, 100)}`);
+      }
+    }
+
     return NextResponse.json({
       message: 'Database siap.',
       changes: results,
