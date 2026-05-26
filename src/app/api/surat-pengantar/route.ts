@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { rtId, nomorSurat, namaPemohon, nik, tujuan, keterangan } = body;
+    const { rtId, nomorSurat, namaPemohon, nik, tujuan, keterangan, ketuaRW } = body;
 
     if (!nomorSurat || !namaPemohon || !nik || !tujuan) {
       return NextResponse.json({ error: 'Nomor surat, nama pemohon, NIK, dan tujuan wajib diisi' }, { status: 400 });
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
         nik: nik.trim(),
         tujuan: tujuan.trim().toUpperCase(),
         keterangan: keterangan ? keterangan.trim().toUpperCase() : null,
+        ketuaRW: ketuaRW ? ketuaRW.trim().toUpperCase() : null,
       },
     });
 
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, nomorSurat, namaPemohon, nik, tujuan, keterangan } = body;
+    const { id, nomorSurat, namaPemohon, nik, tujuan, keterangan, ketuaRW } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID surat wajib' }, { status: 400 });
@@ -70,6 +71,7 @@ export async function PUT(request: NextRequest) {
         ...(nik ? { nik: nik.trim() } : {}),
         ...(tujuan ? { tujuan: tujuan.trim().toUpperCase() } : {}),
         ...(keterangan !== undefined ? { keterangan: keterangan ? keterangan.trim().toUpperCase() : null } : {}),
+        ...(ketuaRW !== undefined ? { ketuaRW: ketuaRW ? ketuaRW.trim().toUpperCase() : null } : {}),
       },
     });
 

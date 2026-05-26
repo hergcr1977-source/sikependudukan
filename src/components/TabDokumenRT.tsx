@@ -36,6 +36,7 @@ interface SuratPengantar {
   nik: string;
   tujuan: string;
   keterangan: string | null;
+  ketuaRW: string | null;
   createdAt: string;
 }
 
@@ -69,6 +70,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
     nik: '',
     tujuan: '',
     keterangan: '',
+    ketuaRW: '',
   });
   const [formError, setFormError] = useState('');
 
@@ -106,6 +108,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       nik: '',
       tujuan: '',
       keterangan: '',
+      ketuaRW: '',
     });
     setShowForm(true);
   };
@@ -119,6 +122,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       nik: s.nik,
       tujuan: s.tujuan,
       keterangan: s.keterangan || '',
+      ketuaRW: s.ketuaRW || '',
     });
     setShowForm(true);
   };
@@ -421,13 +425,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       
       ctx.textAlign = 'center';
       ctx.font = 'bold 12pt "Times New Roman", serif';
-      const underlineY = y + 70;
-      ctx.fillText(surat.namaPemohon, marginLeft + colWidth / 2, underlineY);
-      const nameWidth = ctx.measureText(surat.namaPemohon).width;
-      ctx.beginPath();
-      ctx.moveTo(marginLeft + colWidth / 2 - nameWidth / 2, underlineY + 2);
-      ctx.lineTo(marginLeft + colWidth / 2 + nameWidth / 2, underlineY + 2);
-      ctx.stroke();
+      ctx.fillText(surat.namaPemohon, marginLeft + colWidth / 2, y + 70);
       
       // Kolom kanan - Ketua RT
       const rightColX = a4W / 2 + 20;
@@ -438,14 +436,9 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       ctx.fillText(`Ketua RT ${namaRT} / RW ${rw}`, rightColX + colWidth / 2, y);
       
       ctx.font = 'bold 12pt "Times New Roman", serif';
-      ctx.fillText(ketuaRT, rightColX + colWidth / 2, underlineY);
-      const ketuaWidth = ctx.measureText(ketuaRT).width;
-      ctx.beginPath();
-      ctx.moveTo(rightColX + colWidth / 2 - ketuaWidth / 2, underlineY + 2);
-      ctx.lineTo(rightColX + colWidth / 2 + ketuaWidth / 2, underlineY + 2);
-      ctx.stroke();
+      ctx.fillText(ketuaRT, rightColX + colWidth / 2, y + 50);
       
-      y = underlineY + 40;
+      y += 110;
       
       // Mengetahui
       ctx.textAlign = 'center';
@@ -456,7 +449,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       y += 70;
       
       ctx.font = 'bold 12pt "Times New Roman", serif';
-      ctx.fillText('.............................', a4W / 2, y);
+      ctx.fillText(surat.ketuaRW || '.............................', a4W / 2, y);
       
       // Download
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
@@ -671,6 +664,16 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                 placeholder="Keterangan tambahan (opsional)"
                 value={formData.keterangan}
                 onChange={e => setFormData({ ...formData, keterangan: e.target.value.toUpperCase() })}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Nama Ketua RW</Label>
+              <Input
+                className="text-sm uppercase"
+                placeholder="Nama Ketua RW (opsional)"
+                value={formData.ketuaRW}
+                onChange={e => setFormData({ ...formData, ketuaRW: e.target.value.toUpperCase() })}
               />
             </div>
           </div>
