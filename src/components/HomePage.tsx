@@ -180,9 +180,9 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
       <Toaster position="top-center" richColors />
 
       {/* Inactivity Warning Popup */}
-      {showInactivityWarning && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full shadow-2xl text-center space-y-3 animate-in fade-in zoom-in">
+      {showInactivityWarning && auth.authenticated && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => resetInactivityTimer()}>
+          <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full shadow-2xl text-center space-y-3 animate-in fade-in zoom-in" onClick={e => e.stopPropagation()}>
             <div className="text-4xl">&#9200;</div>
             <h3 className="text-lg font-bold text-gray-800">Sesi Akan Berakhir</h3>
             <p className="text-sm text-gray-600">
