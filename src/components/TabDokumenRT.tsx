@@ -268,7 +268,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
     }, 250);
   };
 
-  // Download JPG
+  // Download JPG - Ukuran A4 dengan kualitas tinggi
   const handleDownloadJPG = async () => {
     if (!previewSurat || !previewRef.current) {
       toast.error('Gagal mengambil data surat');
@@ -276,19 +276,17 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
     }
 
     try {
-      // Gunakan scale 3 untuk kualitas tinggi
+      // Scale 3 untuk kualitas tinggi (300dpi equivalent)
       const canvas = await html2canvas(previewRef.current, {
         scale: 3,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
-        width: 794, // A4 width at 96dpi
-        height: 1123, // A4 height at 96dpi
       });
 
-      // Konversi ke JPG dengan kualitas tinggi
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.98);
+      // Konversi ke JPG dengan kualitas maksimal
+      const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
       const link = document.createElement('a');
       link.href = dataUrl;
       link.download = `Surat_Pengantar_${previewSurat.namaPemohon.replace(/\s+/g, '_')}.jpg`;
@@ -516,102 +514,108 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                 ref={previewRef}
                 className="bg-white shadow-lg"
                 style={{
-                  fontFamily: '"Times New Roman", Times, serif',
-                  width: '794px', // 210mm in pixels at 96dpi
-                  minHeight: '1123px', // 297mm in pixels at 96dpi
+                  fontFamily: 'Arial, Helvetica, sans-serif',
+                  width: '794px', // A4 width at 96dpi
+                  minHeight: '1123px', // A4 height at 96dpi
                   color: '#000000',
-                  fontSize: '16px',
+                  fontSize: '16px', // 12pt = 16px
                   lineHeight: 1.5,
-                  padding: '60px 70px', // margin lebih kecil
+                  padding: '85px 70px', // margin 30mm top/bottom, 25mm left/right
                   boxSizing: 'border-box',
                   backgroundColor: '#ffffff',
                 }}
               >
-                {/* KOP SURAT - TENGAH */}
-                <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-                  <p style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>
+                {/* KOP SURAT */}
+                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                  <p style={{ fontSize: '19px', fontWeight: 'bold', margin: 0 }}>
                     RUKUN TETANGGA {rtInfo?.namaRT || '001'} / RW. {rtInfo?.rw || '002'}
                   </p>
-                  <p style={{ fontSize: '16px', fontWeight: 'bold', margin: '3px 0' }}>
+                  <p style={{ fontSize: '17px', fontWeight: 'bold', margin: '6px 0' }}>
                     DESA {rtInfo?.kelurahan || 'SUKAMAJU'}
                   </p>
-                  <p style={{ fontSize: '14px', margin: 0 }}>
+                  <p style={{ fontSize: '16px', margin: '2px 0' }}>
                     KECAMATAN {rtInfo?.kecamatan || 'CIBUNGBULANG'} - KABUPATEN {rtInfo?.kabupaten || 'BOGOR'}
                   </p>
-                  <p style={{ fontSize: '14px', margin: 0 }}>
+                  <p style={{ fontSize: '16px', margin: 0 }}>
                     PROVINSI {rtInfo?.provinsi || 'JAWA BARAT'}
                   </p>
                 </div>
 
                 {/* GARIS PEMBATAS */}
-                <div style={{ borderTop: '3px double #000000', margin: '10px 0' }}></div>
+                <div style={{ borderTop: '1.5px solid #000000', margin: '15px 0' }}></div>
 
-                {/* JUDUL SURAT - TENGAH */}
-                <p style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', textDecoration: 'underline', margin: '20px 0 6px' }}>
+                {/* JUDUL SURAT */}
+                <p style={{ textAlign: 'center', fontSize: '21px', fontWeight: 'bold', textDecoration: 'underline', margin: '25px 0 8px' }}>
                   SURAT PENGANTAR
                 </p>
-                <p style={{ textAlign: 'center', fontSize: '16px', marginBottom: '20px' }}>
+                <p style={{ textAlign: 'center', fontSize: '16px', marginBottom: '25px' }}>
                   Nomor: {previewSurat.nomorSurat}
                 </p>
 
-                {/* ISI SURAT - RATA KIRI, TANPA INDENT */}
-                <p style={{ textAlign: 'justify', fontSize: '16px', marginBottom: '12px' }}>
+                {/* ISI SURAT */}
+                <p style={{ textAlign: 'justify', fontSize: '16px', marginBottom: '20px' }}>
                   Yang bertanda tangan di bawah ini, Ketua RT {rtInfo?.namaRT || '001'} RW {rtInfo?.rw || '002'} Desa {rtInfo?.kelurahan || 'SUKAMAJU'}, Kecamatan {rtInfo?.kecamatan || 'CIBUNGBULANG'}, Kabupaten {rtInfo?.kabupaten || 'BOGOR'}, menerangkan dengan sebenarnya bahwa:
                 </p>
 
-                {/* TABEL DATA - RATA KIRI */}
-                <table style={{ width: '100%', fontSize: '16px', margin: '12px 0', borderCollapse: 'collapse' }}>
+                {/* TABEL DATA */}
+                <table style={{ width: '100%', fontSize: '16px', margin: '15px 0', borderCollapse: 'collapse' }}>
                   <tbody>
                     <tr>
-                      <td style={{ width: '170px', verticalAlign: 'top', padding: '2px 0' }}>Nama</td>
-                      <td style={{ width: '15px', verticalAlign: 'top', padding: '2px 0' }}>:</td>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0', fontWeight: 'bold' }}>{previewSurat.namaPemohon}</td>
+                      <td style={{ width: '160px', verticalAlign: 'top', padding: '3px 0' }}>Nama</td>
+                      <td style={{ width: '15px', verticalAlign: 'top', padding: '3px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0', fontWeight: 'bold' }}>{previewSurat.namaPemohon}</td>
                     </tr>
                     <tr>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0' }}>NIK</td>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0' }}>:</td>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0' }}>{previewSurat.nik}</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0' }}>NIK</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0' }}>{previewSurat.nik}</td>
                     </tr>
                     <tr>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0' }}>Maksud / Tujuan</td>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0' }}>:</td>
-                      <td style={{ verticalAlign: 'top', padding: '2px 0', fontWeight: 'bold' }}>{previewSurat.tujuan}</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0' }}>Maksud / Tujuan</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 0', fontWeight: 'bold' }}>{previewSurat.tujuan}</td>
                     </tr>
                     {previewSurat.keterangan && (
                       <tr>
-                        <td style={{ verticalAlign: 'top', padding: '2px 0' }}>Keterangan</td>
-                        <td style={{ verticalAlign: 'top', padding: '2px 0' }}>:</td>
-                        <td style={{ verticalAlign: 'top', padding: '2px 0' }}>{previewSurat.keterangan}</td>
+                        <td style={{ verticalAlign: 'top', padding: '3px 0' }}>Keterangan</td>
+                        <td style={{ verticalAlign: 'top', padding: '3px 0' }}>:</td>
+                        <td style={{ verticalAlign: 'top', padding: '3px 0' }}>{previewSurat.keterangan}</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
 
-                {/* PENUTUP - RATA KIRI, TANPA INDENT */}
-                <p style={{ textAlign: 'justify', fontSize: '16px', margin: '20px 0' }}>
+                {/* PENUTUP */}
+                <p style={{ textAlign: 'justify', fontSize: '16px', margin: '20px 0 40px' }}>
                   Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.
                 </p>
 
-                {/* TANDA TANGAN - 2 KOLOM */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px' }}>
-                  {/* KOLOM KIRI - Yang Bersangkutan */}
+                {/* TANDA TANGAN */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
+                  {/* KOLOM KIRI */}
                   <div style={{ width: '45%' }}>
-                    <p style={{ fontSize: '14px', margin: 0 }}>Yang Bersangkutan,</p>
-                    <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px', textAlign: 'center' }}>{previewSurat.namaPemohon}</p>
+                    <p style={{ fontSize: '16px', margin: 0 }}>Yang Bersangkutan,</p>
+                    <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '80px', textAlign: 'center' }}>
+                      {previewSurat.namaPemohon}
+                    </p>
                   </div>
-                  {/* KOLOM KANAN - Ketua RT */}
+                  {/* KOLOM KANAN */}
                   <div style={{ width: '45%', textAlign: 'center' }}>
-                    <p style={{ fontSize: '14px', margin: 0 }}>{rtInfo?.kelurahan || 'SUKAMAJU'}, {getTanggalHariIni()}</p>
-                    <p style={{ fontSize: '14px', marginTop: '4px' }}>Ketua RT {rtInfo?.namaRT || '001'} / RW {rtInfo?.rw || '002'}</p>
-                    <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px' }}>{rtInfo?.ketuaRT || '...........................'}</p>
+                    <p style={{ fontSize: '16px', margin: 0 }}>{rtInfo?.kelurahan || 'SUKAMAJU'}, {getTanggalHariIni()}</p>
+                    <p style={{ fontSize: '16px', margin: '5px 0' }}>Ketua RT {rtInfo?.namaRT || '001'} / RW {rtInfo?.rw || '002'}</p>
+                    <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '80px' }}>
+                      {rtInfo?.ketuaRT || '...........................'}
+                    </p>
                   </div>
                 </div>
 
-                {/* MENGETAHUI - TENGAH BAWAH */}
-                <div style={{ textAlign: 'center', marginTop: '50px' }}>
-                  <p style={{ margin: 0, fontSize: '14px' }}>Mengetahui,</p>
-                  <p style={{ margin: 0, fontSize: '14px' }}>Ketua RW {rtInfo?.rw || '002'}</p>
-                  <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px' }}>.................................</p>
+                {/* MENGETAHUI */}
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '16px', margin: 0 }}>Mengetahui,</p>
+                  <p style={{ fontSize: '16px', margin: 0 }}>Ketua RW {rtInfo?.rw || '002'}</p>
+                  <p style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', marginTop: '80px' }}>
+                    .............................
+                  </p>
                 </div>
               </div>
             )}
