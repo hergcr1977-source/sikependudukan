@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -23,10 +23,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, Search, Printer, Eye, ImageDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { formatTanggal } from '@/lib/utils-kependudukan';
+import html2canvas from 'html2canvas';
 
 interface SuratPengantar {
   id: number;
@@ -41,12 +42,23 @@ interface SuratPengantar {
 interface TabDokumenRTProps {
   isAdmin?: boolean;
   isActive?: boolean;
+  rtInfo?: {
+    namaRT: string;
+    rw: string;
+    kelurahan: string;
+    kecamatan: string;
+    kabupaten: string;
+    provinsi: string;
+    ketuaRT: string | null;
+  } | null;
 }
 
-export default function TabDokumenRT({ isAdmin = true, isActive = false }: TabDokumenRTProps) {
+export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo }: TabDokumenRTProps) {
   const [suratList, setSuratList] = useState<SuratPengantar[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [previewSurat, setPreviewSurat] = useState<SuratPengantar | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Form state
   const [showForm, setShowForm] = useState(false);
@@ -162,6 +174,130 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false }: TabDo
     }
   };
 
+  // Helper untuk format tanggal
+  const getTanggalHariIni = () => {
+    const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const today = new Date();
+    return `${today.getDate()} ${bulan[today.getMonth()]} ${today.getFullYear()}`;
+  };
+
+  // Cetak surat
+  const handleCetakSurat = (surat: SuratPengantar) => {
+    const kelurahan = rtInfo?.kelurahan || 'SUKAMAJU';
+    const kecamatan = rtInfo?.kecamatan || 'CIBUNGBULANG';
+    const kabupaten = rtInfo?.kabupaten || 'BOGOR';
+    const provinsi = rtInfo?.provinsi || 'JAWA BARAT';
+    const namaRT = rtInfo?.namaRT || '001';
+    const rw = rtInfo?.rw || '002';
+    const ketuaRT = rtInfo?.ketuaRT || '...........................';
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Surat Pengantar - ${surat.namaPemohon}</title>
+        <style>
+          @page { size: A4; margin: 2cm 2.5cm; }
+          body { font-family: 'Times New Roman', serif; padding: 20px 30px; margin: 0; font-size: 12pt; line-height: 1.6; color: #000; }
+          .kop-title { font-size: 14pt; font-weight: bold; text-align: center; margin: 0; }
+          .kop-subtitle { font-size: 12pt; font-weight: bold; text-align: center; margin: 3px 0; }
+          .kop-address { font-size: 10pt; text-align: center; margin: 0; }
+          .garis { border-top: 3px double #000; margin: 10px 0; }
+          .judul { text-align: center; font-size: 14pt; font-weight: bold; text-decoration: underline; margin: 20px 0 10px; }
+          .nomor { text-align: center; font-size: 12pt; margin-bottom: 20px; }
+          .isi { text-align: justify; font-size: 12pt; margin-bottom: 15px; }
+          table { width: 100%; font-size: 12pt; margin: 15px 0; }
+          td { padding: 3px 5px; vertical-align: top; }
+          td.label { width: 150px; }
+          td.titik { width: 20px; }
+          .penutup { text-align: justify; font-size: 12pt; margin: 20px 0; }
+          .ttd-wrapper { display: flex; justify-content: space-between; margin-top: 40px; padding: 0 20px; }
+          .ttd-box { text-align: center; min-width: 180px; }
+          .ttd-jabatan { font-size: 11pt; margin-bottom: 5px; }
+          .ttd-nama { font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 70px; }
+          .mengetahui { text-align: center; margin-top: 50px; }
+        </style>
+      </head>
+      <body>
+        <p class="kop-title">RUKUN TETANGGA ${namaRT} / RW. ${rw}</p>
+        <p class="kop-subtitle">DESA ${kelurahan}</p>
+        <p class="kop-address">KECAMATAN ${kecamatan} - KABUPATEN ${kabupaten}</p>
+        <p class="kop-address">PROVINSI ${provinsi}</p>
+        <div class="garis"></div>
+        <p class="judul">SURAT PENGANTAR</p>
+        <p class="nomor">Nomor: ${surat.nomorSurat}</p>
+        <p class="isi">Yang bertanda tangan di bawah ini, Ketua RT ${namaRT} RW ${rw} Desa ${kelurahan}, Kecamatan ${kecamatan}, Kabupaten ${kabupaten}, menerangkan dengan sebenarnya bahwa:</p>
+        <table>
+          <tr><td class="label">Nama</td><td class="titik">:</td><td><strong>${surat.namaPemohon}</strong></td></tr>
+          <tr><td class="label">NIK</td><td class="titik">:</td><td>${surat.nik}</td></tr>
+          <tr><td class="label">Maksud / Tujuan</td><td class="titik">:</td><td><strong>${surat.tujuan}</strong></td></tr>
+          ${surat.keterangan ? `<tr><td class="label">Keterangan</td><td class="titik">:</td><td>${surat.keterangan}</td></tr>` : ''}
+        </table>
+        <p class="penutup">Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.</p>
+        <div class="ttd-wrapper">
+          <div class="ttd-box">
+            <p class="ttd-jabatan">Yang Bersangkutan</p>
+            <p class="ttd-nama">${surat.namaPemohon}</p>
+          </div>
+          <div class="ttd-box">
+            <p class="ttd-jabatan">${kelurahan}, ${getTanggalHariIni()}</p>
+            <p class="ttd-jabatan">Ketua RT ${namaRT} / RW ${rw}</p>
+            <p class="ttd-nama">${ketuaRT}</p>
+          </div>
+        </div>
+        <div class="mengetahui">
+          <p>Mengetahui,</p>
+          <p>Ketua RW ${rw}</p>
+          <p class="ttd-nama" style="margin-top: 70px; display: inline-block;">.................................</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Popup blocker aktif. Izinkan popup untuk mencetak.');
+      return;
+    }
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
+
+  // Download JPG
+  const handleDownloadJPG = async () => {
+    if (!previewSurat || !previewRef.current) {
+      toast.error('Gagal mengambil data surat');
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Surat_Pengantar_${previewSurat.namaPemohon.replace(/\s+/g, '_')}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success('File JPG berhasil diunduh');
+    } catch (error) {
+      console.error('Error exporting JPG:', error);
+      toast.error('Gagal mengexport ke JPG');
+    }
+  };
+
   // Filter by search
   const filtered = suratList.filter(s => {
     const q = search.toLowerCase();
@@ -246,6 +382,12 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false }: TabDo
                     </p>
                   </div>
                   <div className="flex gap-1 shrink-0 ml-2">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-purple-500" onClick={() => setPreviewSurat(s)} title="Preview & Download JPG">
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500" onClick={() => handleCetakSurat(s)} title="Cetak">
+                      <Printer className="h-3.5 w-3.5" />
+                    </Button>
                     {isAdmin && (
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(s)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -356,6 +498,98 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false }: TabDo
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewSurat} onOpenChange={() => setPreviewSurat(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Preview Surat Pengantar</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 bg-gray-100 rounded-lg p-4">
+            {previewSurat && (
+              <div
+                ref={previewRef}
+                className="bg-white mx-auto shadow-lg"
+                style={{
+                  fontFamily: 'Times New Roman, serif',
+                  width: '210mm',
+                  minHeight: '297mm',
+                  color: '#000',
+                  fontSize: '12pt',
+                  lineHeight: 1.6,
+                  padding: '20mm',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <div style={{ textAlign: 'center', marginBottom: '5px' }}>
+                  <p style={{ fontSize: '14pt', fontWeight: 'bold', margin: 0 }}>RUKUN TETANGGA {rtInfo?.namaRT || '001'} / RW. {rtInfo?.rw || '002'}</p>
+                  <p style={{ fontSize: '12pt', fontWeight: 'bold', margin: '3px 0' }}>DESA {rtInfo?.kelurahan || 'SUKAMAJU'}</p>
+                  <p style={{ fontSize: '10pt', margin: 0 }}>KECAMATAN {rtInfo?.kecamatan || 'CIBUNGBULANG'} - KABUPATEN {rtInfo?.kabupaten || 'BOGOR'}</p>
+                  <p style={{ fontSize: '10pt', margin: 0 }}>PROVINSI {rtInfo?.provinsi || 'JAWA BARAT'}</p>
+                </div>
+                <div style={{ borderTop: '3px double #000', margin: '10px 0' }}></div>
+                <p style={{ textAlign: 'center', fontSize: '14pt', fontWeight: 'bold', textDecoration: 'underline', margin: '20px 0 10px' }}>SURAT PENGANTAR</p>
+                <p style={{ textAlign: 'center', fontSize: '12pt', marginBottom: '20px' }}>Nomor: {previewSurat.nomorSurat}</p>
+                <p style={{ textAlign: 'justify', fontSize: '12pt', marginBottom: '15px' }}>
+                  Yang bertanda tangan di bawah ini, Ketua RT {rtInfo?.namaRT || '001'} RW {rtInfo?.rw || '002'} Desa {rtInfo?.kelurahan || 'SUKAMAJU'}, Kecamatan {rtInfo?.kecamatan || 'CIBUNGBULANG'}, Kabupaten {rtInfo?.kabupaten || 'BOGOR'}, menerangkan dengan sebenarnya bahwa:
+                </p>
+                <table style={{ width: '100%', fontSize: '12pt', margin: '15px 0', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '150px', verticalAlign: 'top', padding: '3px 5px' }}>Nama</td>
+                      <td style={{ width: '20px', verticalAlign: 'top', padding: '3px 5px' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px', fontWeight: 'bold' }}>{previewSurat.namaPemohon}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>NIK</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>{previewSurat.nik}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>Maksud / Tujuan</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>:</td>
+                      <td style={{ verticalAlign: 'top', padding: '3px 5px', fontWeight: 'bold' }}>{previewSurat.tujuan}</td>
+                    </tr>
+                    {previewSurat.keterangan && (
+                      <tr>
+                        <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>Keterangan</td>
+                        <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>:</td>
+                        <td style={{ verticalAlign: 'top', padding: '3px 5px' }}>{previewSurat.keterangan}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <p style={{ textAlign: 'justify', fontSize: '12pt', margin: '20px 0' }}>Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', padding: '0 20px' }}>
+                  <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                    <p style={{ fontSize: '11pt', marginBottom: '5px' }}>Yang Bersangkutan</p>
+                    <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px' }}>{previewSurat.namaPemohon}</p>
+                  </div>
+                  <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                    <p style={{ fontSize: '11pt', marginBottom: '5px' }}>{rtInfo?.kelurahan || 'SUKAMAJU'}, {getTanggalHariIni()}</p>
+                    <p style={{ fontSize: '11pt', marginBottom: '5px' }}>Ketua RT {rtInfo?.namaRT || '001'} / RW {rtInfo?.rw || '002'}</p>
+                    <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px' }}>{rtInfo?.ketuaRT || '...........................'}</p>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', marginTop: '50px' }}>
+                  <p style={{ margin: 0 }}>Mengetahui,</p>
+                  <p style={{ margin: 0 }}>Ketua RW {rtInfo?.rw || '002'}</p>
+                  <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '70px', display: 'inline-block' }}>.................................</p>
+                </div>
+              </div>
+            )}
+          </ScrollArea>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setPreviewSurat(null)}>Tutup</Button>
+            <Button variant="outline" className="bg-blue-50" onClick={() => previewSurat && handleCetakSurat(previewSurat)}>
+              <Printer className="h-4 w-4 mr-2" /> Cetak
+            </Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handleDownloadJPG}>
+              <ImageDown className="h-4 w-4 mr-2" /> Download JPG
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

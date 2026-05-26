@@ -416,7 +416,7 @@ export default function HomePage({ initialRole, initialNama, initialRtId, initia
               <TabKasRT isAdmin={true} isActive={activeTab === 'kas'} />
             </TabsContent>
             <TabsContent value="dokumen">
-              <TabDokumenRT isAdmin={isAdmin} isActive={activeTab === 'dokumen'} />
+              <TabDokumenRT isAdmin={isAdmin} isActive={activeTab === 'dokumen'} rtInfo={auth.rtInfo} />
             </TabsContent>
           </>
         </Tabs>
