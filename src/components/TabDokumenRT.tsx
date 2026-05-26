@@ -501,23 +501,24 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
 
       {/* Preview Dialog */}
       <Dialog open={!!previewSurat} onOpenChange={() => setPreviewSurat(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Preview Surat Pengantar</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="flex-1 bg-gray-100 rounded-lg p-4">
+          <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
             {previewSurat && (
               <div
                 ref={previewRef}
                 className="bg-white mx-auto shadow-lg"
                 style={{
                   fontFamily: 'Times New Roman, serif',
-                  width: '210mm',
+                  width: '100%',
+                  maxWidth: '210mm',
                   minHeight: '297mm',
                   color: '#000',
                   fontSize: '12pt',
                   lineHeight: 1.6,
-                  padding: '20mm',
+                  padding: '15mm',
                   boxSizing: 'border-box',
                 }}
               >
@@ -578,8 +579,8 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                 </div>
               </div>
             )}
-          </ScrollArea>
-          <div className="flex gap-2 justify-end pt-2">
+          </div>
+          <div className="flex gap-2 justify-end pt-2 shrink-0 bg-white border-t p-3">
             <Button variant="outline" onClick={() => setPreviewSurat(null)}>Tutup</Button>
             <Button variant="outline" className="bg-blue-50" onClick={() => previewSurat && handleCetakSurat(previewSurat)}>
               <Printer className="h-4 w-4 mr-2" /> Cetak
