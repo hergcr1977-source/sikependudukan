@@ -15,6 +15,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/setup-db') ||
     pathname.startsWith('/api/setup-surat-pengantar') ||
     pathname.startsWith('/api/debug-db-url') ||
+    pathname.startsWith('/api/migrate-surat') ||
     pathname === '/api/download-apk' ||
     pathname === '/SIKEPENDUDUKAN-Offline.apk'
   ) {
