@@ -285,75 +285,179 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       const rw = rtInfo?.rw || '002';
       const ketuaRT = rtInfo?.ketuaRT || '...........................';
 
-      // Buat elemen tersembunyi untuk render A4
-      const container = document.createElement('div');
-      container.style.cssText = `
-        position: fixed;
-        left: -9999px;
-        top: 0;
-        width: 794px;
-        height: 1123px;
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 12pt;
-        line-height: 1.5;
-        color: #000000;
-        background: #ffffff;
-        padding: 60px 70px;
-        box-sizing: border-box;
-        overflow: hidden;
-      `;
+      // Dimensi A4 @ 96dpi
+      const a4W = 794;
+      const a4H = 1123;
+      const scale = 2; // untuk kualitas lebih tinggi
 
-      container.innerHTML = `
-        <div style="text-align: center; margin-bottom: 8px;">
-          <p style="font-size: 14pt; font-weight: bold; margin: 0; white-space: nowrap;">RUKUN TETANGGA ${namaRT} / RW.${rw}</p>
-          <p style="font-size: 12pt; font-weight: bold; margin: 3px 0;">DESA ${kelurahan}</p>
-          <p style="font-size: 11pt; margin: 2px 0;">KECAMATAN ${kecamatan} - KABUPATEN ${kabupaten}</p>
-          <p style="font-size: 11pt; margin: 0;">PROVINSI ${provinsi}</p>
-        </div>
-        <div style="border-top: 3px double #000; margin: 10px 0 15px 0;"></div>
-        <div style="text-align: center; margin-bottom: 15px;">
-          <p style="font-size: 14pt; font-weight: bold; text-decoration: underline; margin: 0 0 3px 0;">SURAT PENGANTAR</p>
-          <p style="font-size: 11pt; margin: 0;">Nomor: ${surat.nomorSurat}</p>
-        </div>
-        <p style="text-align: justify; font-size: 12pt; margin: 0 0 10px 0;">Yang bertanda tangan di bawah ini, Ketua RT ${namaRT} RW ${rw} Desa ${kelurahan}, Kecamatan ${kecamatan}, Kabupaten ${kabupaten}, menerangkan dengan sebenarnya bahwa:</p>
-        <table style="width: 100%; font-size: 12pt; margin: 8px 0 15px 30px; border-collapse: collapse;">
-          <tr><td style="width: 140px; vertical-align: top; padding: 2px 0;">Nama</td><td style="width: 15px; vertical-align: top;">:</td><td style="vertical-align: top; font-weight: bold;">${surat.namaPemohon}</td></tr>
-          <tr><td style="vertical-align: top; padding: 2px 0;">NIK</td><td style="vertical-align: top;">:</td><td style="vertical-align: top;">${surat.nik}</td></tr>
-          <tr><td style="vertical-align: top; padding: 2px 0;">Maksud / Tujuan</td><td style="vertical-align: top;">:</td><td style="vertical-align: top; font-weight: bold;">${surat.tujuan}</td></tr>
-          ${surat.keterangan ? `<tr><td style="vertical-align: top; padding: 2px 0;">Keterangan</td><td style="vertical-align: top;">:</td><td style="vertical-align: top;">${surat.keterangan}</td></tr>` : ''}
-        </table>
-        <p style="text-align: justify; font-size: 12pt; margin: 0 0 15px 0;">Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.</p>
-        <div style="display: flex; justify-content: space-between; margin-top: 30px;">
-          <div style="width: 40%;">
-            <p style="font-size: 12pt; margin: 0;">Yang Bersangkutan,</p>
-            <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px; text-align: center;">${surat.namaPemohon}</p>
-          </div>
-          <div style="width: 40%; text-align: center;">
-            <p style="font-size: 12pt; margin: 0;">${kelurahan}, ${getTanggalHariIni()}</p>
-            <p style="font-size: 12pt; margin: 3px 0;">Ketua RT ${namaRT} / RW ${rw}</p>
-            <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px;">${ketuaRT}</p>
-          </div>
-        </div>
-        <div style="text-align: center; margin-top: 20px;">
-          <p style="font-size: 12pt; margin: 0;">Mengetahui,</p>
-          <p style="font-size: 12pt; margin: 0;">Ketua RW ${rw}</p>
-          <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px;">.............................</p>
-        </div>
-      `;
+      // Buat canvas langsung dengan ukuran A4
+      const canvas = document.createElement('canvas');
+      canvas.width = a4W * scale;
+      canvas.height = a4H * scale;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        toast.error('Gagal membuat canvas');
+        return;
+      }
 
-      document.body.appendChild(container);
-
-      // Capture dengan html2canvas
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-
-      document.body.removeChild(container);
-
+      // Background putih
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Set scale
+      ctx.scale(scale, scale);
+      
+      // Font settings
+      ctx.fillStyle = '#000000';
+      ctx.textBaseline = 'top';
+      
+      // Margin
+      const marginLeft = 70;
+      const marginRight = 70;
+      const marginTop = 60;
+      const contentWidth = a4W - marginLeft - marginRight;
+      
+      let y = marginTop;
+      
+      // KOP SURAT
+      ctx.font = 'bold 14pt "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`RUKUN TETANGGA ${namaRT} / RW.${rw}`, a4W / 2, y);
+      y += 22;
+      
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      ctx.fillText(`DESA ${kelurahan}`, a4W / 2, y);
+      y += 18;
+      
+      ctx.font = '11pt "Times New Roman", serif';
+      ctx.fillText(`KECAMATAN ${kecamatan} - KABUPATEN ${kabupaten}`, a4W / 2, y);
+      y += 16;
+      
+      ctx.fillText(`PROVINSI ${provinsi}`, a4W / 2, y);
+      y += 20;
+      
+      // Garis double
+      ctx.beginPath();
+      ctx.moveTo(marginLeft, y);
+      ctx.lineTo(a4W - marginRight, y);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.moveTo(marginLeft, y + 3);
+      ctx.lineTo(a4W - marginRight, y + 3);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      y += 25;
+      
+      // JUDUL SURAT
+      ctx.font = 'bold 14pt "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SURAT PENGANTAR', a4W / 2, y);
+      y += 5;
+      
+      // Underline judul
+      const titleWidth = ctx.measureText('SURAT PENGANTAR').width;
+      ctx.beginPath();
+      ctx.moveTo((a4W - titleWidth) / 2, y + 18);
+      ctx.lineTo((a4W + titleWidth) / 2, y + 18);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      y += 25;
+      
+      ctx.font = '11pt "Times New Roman", serif';
+      ctx.fillText(`Nomor: ${surat.nomorSurat}`, a4W / 2, y);
+      y += 30;
+      
+      // ISI SURAT
+      ctx.font = '12pt "Times New Roman", serif';
+      ctx.textAlign = 'justify';
+      const isiText = `Yang bertanda tangan di bawah ini, Ketua RT ${namaRT} RW ${rw} Desa ${kelurahan}, Kecamatan ${kecamatan}, Kabupaten ${kabupaten}, menerangkan dengan sebenarnya bahwa:`;
+      wrapText(ctx, isiText, marginLeft, y, contentWidth, 18);
+      y += 50;
+      
+      // TABEL DATA
+      ctx.textAlign = 'left';
+      const tableX = marginLeft + 30;
+      
+      ctx.font = '12pt "Times New Roman", serif';
+      ctx.fillText('Nama', tableX, y);
+      ctx.fillText(':', tableX + 120, y);
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      ctx.fillText(surat.namaPemohon, tableX + 140, y);
+      y += 22;
+      
+      ctx.font = '12pt "Times New Roman", serif';
+      ctx.fillText('NIK', tableX, y);
+      ctx.fillText(':', tableX + 120, y);
+      ctx.fillText(surat.nik, tableX + 140, y);
+      y += 22;
+      
+      ctx.fillText('Maksud / Tujuan', tableX, y);
+      ctx.fillText(':', tableX + 120, y);
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      ctx.fillText(surat.tujuan, tableX + 140, y);
+      y += 22;
+      
+      if (surat.keterangan) {
+        ctx.font = '12pt "Times New Roman", serif';
+        ctx.fillText('Keterangan', tableX, y);
+        ctx.fillText(':', tableX + 120, y);
+        ctx.fillText(surat.keterangan, tableX + 140, y);
+        y += 22;
+      }
+      y += 20;
+      
+      // PENUTUP
+      ctx.font = '12pt "Times New Roman", serif';
+      wrapText(ctx, 'Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.', marginLeft, y, contentWidth, 18);
+      y += 60;
+      
+      // TANDA TANGAN - 2 kolom
+      const colWidth = contentWidth / 2 - 20;
+      
+      // Kolom kiri - Yang Bersangkutan
+      ctx.textAlign = 'left';
+      ctx.fillText('Yang Bersangkutan,', marginLeft, y);
+      
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      const underlineY = y + 70;
+      ctx.fillText(surat.namaPemohon, marginLeft + colWidth / 2, underlineY);
+      const nameWidth = ctx.measureText(surat.namaPemohon).width;
+      ctx.beginPath();
+      ctx.moveTo(marginLeft + colWidth / 2 - nameWidth / 2, underlineY + 2);
+      ctx.lineTo(marginLeft + colWidth / 2 + nameWidth / 2, underlineY + 2);
+      ctx.stroke();
+      
+      // Kolom kanan - Ketua RT
+      const rightColX = a4W / 2 + 20;
+      ctx.font = '12pt "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${kelurahan}, ${getTanggalHariIni()}`, rightColX + colWidth / 2, y);
+      y += 20;
+      ctx.fillText(`Ketua RT ${namaRT} / RW ${rw}`, rightColX + colWidth / 2, y);
+      
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      ctx.fillText(ketuaRT, rightColX + colWidth / 2, underlineY);
+      const ketuaWidth = ctx.measureText(ketuaRT).width;
+      ctx.beginPath();
+      ctx.moveTo(rightColX + colWidth / 2 - ketuaWidth / 2, underlineY + 2);
+      ctx.lineTo(rightColX + colWidth / 2 + ketuaWidth / 2, underlineY + 2);
+      ctx.stroke();
+      
+      y = underlineY + 40;
+      
+      // Mengetahui
+      ctx.textAlign = 'center';
+      ctx.font = '12pt "Times New Roman", serif';
+      ctx.fillText('Mengetahui,', a4W / 2, y);
+      y += 18;
+      ctx.fillText(`Ketua RW ${rw}`, a4W / 2, y);
+      y += 70;
+      
+      ctx.font = 'bold 12pt "Times New Roman", serif';
+      ctx.fillText('.............................', a4W / 2, y);
+      
       // Download
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       const link = document.createElement('a');
@@ -368,6 +472,28 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       console.error('Error exporting JPG:', error);
       toast.error('Gagal mengexport ke JPG');
     }
+  };
+
+  // Helper function untuk wrap text
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+    
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line + words[n] + ' ';
+      const metrics = ctx.measureText(testLine);
+      const testWidth = metrics.width;
+      
+      if (testWidth > maxWidth && n > 0) {
+        ctx.fillText(line, x, currentY);
+        line = words[n] + ' ';
+        currentY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    ctx.fillText(line, x, currentY);
   };
 
   // Filter by search
