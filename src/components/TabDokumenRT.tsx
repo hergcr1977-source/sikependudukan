@@ -418,25 +418,23 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       
       // TANDA TANGAN - 2 kolom
       const colWidth = contentWidth / 2 - 20;
+      const leftColX = marginLeft + colWidth / 2;
+      const rightColX = a4W / 2 + 20 + colWidth / 2;
       
-      // Kolom kiri - Yang Bersangkutan
-      ctx.textAlign = 'left';
-      ctx.fillText('Yang Bersangkutan,', marginLeft, y);
-      
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 12pt "Times New Roman", serif';
-      ctx.fillText(surat.namaPemohon, marginLeft + colWidth / 2, y + 70);
-      
-      // Kolom kanan - Ketua RT
-      const rightColX = a4W / 2 + 20;
+      // Baris pertama - sejajar
       ctx.font = '12pt "Times New Roman", serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${kelurahan}, ${getTanggalHariIni()}`, rightColX + colWidth / 2, y);
+      ctx.fillText(`${kelurahan}, ${getTanggalHariIni()}`, rightColX, y);
       y += 20;
-      ctx.fillText(`Ketua RT ${namaRT} / RW ${rw}`, rightColX + colWidth / 2, y);
       
+      // Baris kedua - sejajar
+      ctx.fillText('Yang Bersangkutan,', leftColX, y);
+      ctx.fillText(`Ketua RT ${namaRT} / RW ${rw}`, rightColX, y);
+      
+      // Nama sejajar di bawah
       ctx.font = 'bold 12pt "Times New Roman", serif';
-      ctx.fillText(ketuaRT, rightColX + colWidth / 2, y + 50);
+      ctx.fillText(surat.namaPemohon, leftColX, y + 50);
+      ctx.fillText(ketuaRT, rightColX, y + 50);
       
       y += 110;
       
@@ -805,9 +803,10 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                   {/* TANDA TANGAN 2 KOLOM */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                     {/* KOLOM KIRI - Yang Bersangkutan */}
-                    <div style={{ width: '40%' }}>
-                      <p style={{ fontSize: '12pt', margin: 0 }}>Yang Bersangkutan,</p>
-                      <p style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '50px', textAlign: 'center' }}>
+                    <div style={{ width: '40%', textAlign: 'center' }}>
+                      <p style={{ fontSize: '12pt', margin: 0 }}>&nbsp;</p>
+                      <p style={{ fontSize: '12pt', margin: '2px 0' }}>Yang Bersangkutan,</p>
+                      <p style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '50px' }}>
                         {previewSurat.namaPemohon}
                       </p>
                     </div>
