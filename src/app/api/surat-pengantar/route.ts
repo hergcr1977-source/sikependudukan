@@ -3,6 +3,17 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Fungsi untuk menambah kolom ketuaRW jika belum ada
+async function ensureKetuaRWColumn() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "SuratPengantar" ADD COLUMN IF NOT EXISTS "ketuaRW" TEXT;
+    `);
+  } catch (e) {
+    // Ignore error jika kolom sudah ada
+  }
+}
+
 // GET - Ambil semua surat pengantar
 export async function GET(request: NextRequest) {
   try {
@@ -34,19 +45,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nomor surat, nama pemohon, NIK, dan tujuan wajib diisi' }, { status: 400 });
     }
 
-    const surat = await prisma.suratPengantar.create({
-      data: {
-        rtId: rtId || 1,
-        nomorSurat: nomorSurat.trim().toUpperCase(),
-        namaPemohon: namaPemohon.trim().toUpperCase(),
-        nik: nik.trim(),
-        tujuan: tujuan.trim().toUpperCase(),
-        keterangan: keterangan ? keterangan.trim().toUpperCase() : null,
-        ketuaRW: ketuaRW ? ketuaRW.trim().toUpperCase() : null,
-      },
-    });
-
-    return NextResponse.json(surat);
+    try {
+      const surat = await prisma.suratPengantar.create({
+        data: {
+          rtId: rtId || 1,
+          nomorSurat: nomorSurat.trim().toUpperCase(),
+          namaPemohon: namaPemohon.trim().toUpperCase(),
+          nik: nik.trim(),
+          tujuan: tujuan.trim().toUpperCase(),
+          keterangan: keterangan ? keterangan.trim().toUpperCase() : null,
+          ketuaRW: ketuaRW ? ketuaRW.trim().toUpperCase() : null,
+        },
+      });
+      return NextResponse.json(surat);
+    } catch (createError: any) {
+      // Jika kolom ketuaRW belum ada, tambahkan dan retry
+      if (createError?.message?.includes('ketuaRW') || createError?.code === 'P2021') {
+        await ensureKetuaRWColumn();
+        const surat = await prisma.suratPengantar.create({
+          data: {
+            rtId: rtId || 1,
+            nomorSurat: nomorSurat.trim().toUpperCase(),
+            namaPemohon: namaPemohon.trim().toUpperCase(),
+            nik: nik.trim(),
+            tujuan: tujuan.trim().toUpperCase(),
+            keterangan: keterangan ? keterangan.trim().toUpperCase() : null,
+            ketuaRW: ketuaRW ? ketuaRW.trim().toUpperCase() : null,
+          },
+        });
+        return NextResponse.json(surat);
+      }
+      throw createError;
+    }
   } catch (error: any) {
     console.error('[POST /api/surat-pengantar]', error);
     const errorMessage = error?.message || 'Gagal menambah surat pengantar';

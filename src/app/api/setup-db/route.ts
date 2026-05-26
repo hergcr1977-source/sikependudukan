@@ -147,6 +147,7 @@ export async function GET() {
             "nik" TEXT NOT NULL,
             "tujuan" TEXT NOT NULL,
             "keterangan" TEXT,
+            "ketuaRW" TEXT,
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
@@ -159,6 +160,10 @@ export async function GET() {
         results.push(`Error creating SuratPengantar: ${msg.substring(0, 100)}`);
       }
     }
+
+    // SuratPengantar - add ketuaRW column if not exists
+    const ketuaRWResult = await ensureColumn('SuratPengantar', 'ketuaRW', 'TEXT');
+    if (ketuaRWResult) results.push(ketuaRWResult);
 
     return NextResponse.json({
       message: 'Database siap.',
