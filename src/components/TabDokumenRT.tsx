@@ -305,7 +305,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
 
       container.innerHTML = `
         <div style="text-align: center; margin-bottom: 8px;">
-          <p style="font-size: 14pt; font-weight: bold; margin: 0;">RUKUN TETANGGA ${namaRT} / RW. ${rw}</p>
+          <p style="font-size: 14pt; font-weight: bold; margin: 0; white-space: nowrap;">RUKUN TETANGGA ${namaRT} / RW.${rw}</p>
           <p style="font-size: 12pt; font-weight: bold; margin: 3px 0;">DESA ${kelurahan}</p>
           <p style="font-size: 11pt; margin: 2px 0;">KECAMATAN ${kecamatan} - KABUPATEN ${kabupaten}</p>
           <p style="font-size: 11pt; margin: 0;">PROVINSI ${provinsi}</p>
@@ -600,8 +600,8 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
               >
                 {/* KOP SURAT - Posisi Tengah */}
                 <div style={{ textAlign: 'center', marginBottom: '5px' }}>
-                  <p style={{ fontSize: '14pt', fontWeight: 'bold', margin: 0 }}>
-                    RUKUN TETANGGA {rtInfo?.namaRT || '001'} / RW. {rtInfo?.rw || '002'}
+                  <p style={{ fontSize: '14pt', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap' }}>
+                    RUKUN TETANGGA {rtInfo?.namaRT || '001'} / RW.{rtInfo?.rw || '002'}
                   </p>
                   <p style={{ fontSize: '12pt', fontWeight: 'bold', margin: '2px 0' }}>
                     DESA {rtInfo?.kelurahan || 'SUKAMAJU'}
