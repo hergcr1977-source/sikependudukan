@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(surat);
   } catch (error: any) {
     console.error('[POST /api/surat-pengantar]', error);
-    return NextResponse.json({ error: 'Gagal menambah surat pengantar' }, { status: 500 });
+    const errorMessage = error?.message || 'Gagal menambah surat pengantar';
+    return NextResponse.json({ error: errorMessage, details: error?.code || 'UNKNOWN' }, { status: 500 });
   }
 }
 
