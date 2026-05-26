@@ -360,12 +360,15 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       ctx.fillText(`Nomor: ${surat.nomorSurat}`, a4W / 2, y);
       y += 30;
       
-      // ISI SURAT
+      // ISI SURAT - Paragraf pembuka
       ctx.font = '12pt "Times New Roman", serif';
-      ctx.textAlign = 'justify';
+      ctx.textAlign = 'left';
       const isiText = `Yang bertanda tangan di bawah ini, Ketua RT ${namaRT} RW ${rw} Desa ${kelurahan}, Kecamatan ${kecamatan}, Kabupaten ${kabupaten}, menerangkan dengan sebenarnya bahwa:`;
-      wrapText(ctx, isiText, marginLeft, y, contentWidth, 18);
-      y += 50;
+      const lines = wrapTextLines(ctx, isiText, contentWidth);
+      lines.forEach((line: string, index: number) => {
+        ctx.fillText(line, marginLeft, y + (index * 18));
+      });
+      y += lines.length * 18 + 15;
       
       // TABEL DATA
       ctx.textAlign = 'left';
@@ -401,8 +404,13 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       
       // PENUTUP
       ctx.font = '12pt "Times New Roman", serif';
-      wrapText(ctx, 'Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.', marginLeft, y, contentWidth, 18);
-      y += 60;
+      ctx.textAlign = 'left';
+      const penutupText = 'Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.';
+      const penutupLines = wrapTextLines(ctx, penutupText, contentWidth);
+      penutupLines.forEach((line: string, index: number) => {
+        ctx.fillText(line, marginLeft, y + (index * 18));
+      });
+      y += penutupLines.length * 18 + 40;
       
       // TANDA TANGAN - 2 kolom
       const colWidth = contentWidth / 2 - 20;
@@ -466,26 +474,29 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
     }
   };
 
-  // Helper function untuk wrap text
-  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
+  // Helper function untuk wrap text - returns array of lines
+  const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
-    let line = '';
-    let currentY = y;
-    
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? currentLine + ' ' + word : word;
       const metrics = ctx.measureText(testLine);
-      const testWidth = metrics.width;
       
-      if (testWidth > maxWidth && n > 0) {
-        ctx.fillText(line, x, currentY);
-        line = words[n] + ' ';
-        currentY += lineHeight;
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
       } else {
-        line = testLine;
+        currentLine = testLine;
       }
     }
-    ctx.fillText(line, x, currentY);
+    
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    
+    return lines;
   };
 
   // Filter by search
