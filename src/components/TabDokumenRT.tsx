@@ -270,35 +270,95 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
 
   // Download JPG - Ukuran A4 dengan kualitas tinggi
   const handleDownloadJPG = async () => {
-    if (!previewSurat || !previewRef.current) {
+    if (!previewSurat) {
       toast.error('Gagal mengambil data surat');
       return;
     }
 
     try {
-      // Gunakan width dan height tetap untuk memastikan rasio A4 benar
-      // A4 @ 96dpi: 794px x 1123px
-      const a4Width = 794;
-      const a4Height = 1123;
-      const scale = 2; // 2x untuk kualitas lebih baik
+      const surat = previewSurat;
+      const kelurahan = rtInfo?.kelurahan || 'SUKAMAJU';
+      const kecamatan = rtInfo?.kecamatan || 'CIBUNGBULANG';
+      const kabupaten = rtInfo?.kabupaten || 'BOGOR';
+      const provinsi = rtInfo?.provinsi || 'JAWA BARAT';
+      const namaRT = rtInfo?.namaRT || '001';
+      const rw = rtInfo?.rw || '002';
+      const ketuaRT = rtInfo?.ketuaRT || '...........................';
 
-      const canvas = await html2canvas(previewRef.current, {
-        width: a4Width,
-        height: a4Height,
-        scale: scale,
+      // Buat elemen tersembunyi untuk render A4
+      const container = document.createElement('div');
+      container.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: 794px;
+        height: 1123px;
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 12pt;
+        line-height: 1.5;
+        color: #000000;
+        background: #ffffff;
+        padding: 60px 70px;
+        box-sizing: border-box;
+        overflow: hidden;
+      `;
+
+      container.innerHTML = `
+        <div style="text-align: center; margin-bottom: 8px;">
+          <p style="font-size: 14pt; font-weight: bold; margin: 0;">RUKUN TETANGGA ${namaRT} / RW. ${rw}</p>
+          <p style="font-size: 12pt; font-weight: bold; margin: 3px 0;">DESA ${kelurahan}</p>
+          <p style="font-size: 11pt; margin: 2px 0;">KECAMATAN ${kecamatan} - KABUPATEN ${kabupaten}</p>
+          <p style="font-size: 11pt; margin: 0;">PROVINSI ${provinsi}</p>
+        </div>
+        <div style="border-top: 3px double #000; margin: 10px 0 15px 0;"></div>
+        <div style="text-align: center; margin-bottom: 15px;">
+          <p style="font-size: 14pt; font-weight: bold; text-decoration: underline; margin: 0 0 3px 0;">SURAT PENGANTAR</p>
+          <p style="font-size: 11pt; margin: 0;">Nomor: ${surat.nomorSurat}</p>
+        </div>
+        <p style="text-align: justify; font-size: 12pt; margin: 0 0 10px 0;">Yang bertanda tangan di bawah ini, Ketua RT ${namaRT} RW ${rw} Desa ${kelurahan}, Kecamatan ${kecamatan}, Kabupaten ${kabupaten}, menerangkan dengan sebenarnya bahwa:</p>
+        <table style="width: 100%; font-size: 12pt; margin: 8px 0 15px 30px; border-collapse: collapse;">
+          <tr><td style="width: 140px; vertical-align: top; padding: 2px 0;">Nama</td><td style="width: 15px; vertical-align: top;">:</td><td style="vertical-align: top; font-weight: bold;">${surat.namaPemohon}</td></tr>
+          <tr><td style="vertical-align: top; padding: 2px 0;">NIK</td><td style="vertical-align: top;">:</td><td style="vertical-align: top;">${surat.nik}</td></tr>
+          <tr><td style="vertical-align: top; padding: 2px 0;">Maksud / Tujuan</td><td style="vertical-align: top;">:</td><td style="vertical-align: top; font-weight: bold;">${surat.tujuan}</td></tr>
+          ${surat.keterangan ? `<tr><td style="vertical-align: top; padding: 2px 0;">Keterangan</td><td style="vertical-align: top;">:</td><td style="vertical-align: top;">${surat.keterangan}</td></tr>` : ''}
+        </table>
+        <p style="text-align: justify; font-size: 12pt; margin: 0 0 15px 0;">Demikian Surat Pengantar ini kami buat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.</p>
+        <div style="display: flex; justify-content: space-between; margin-top: 30px;">
+          <div style="width: 40%;">
+            <p style="font-size: 12pt; margin: 0;">Yang Bersangkutan,</p>
+            <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px; text-align: center;">${surat.namaPemohon}</p>
+          </div>
+          <div style="width: 40%; text-align: center;">
+            <p style="font-size: 12pt; margin: 0;">${kelurahan}, ${getTanggalHariIni()}</p>
+            <p style="font-size: 12pt; margin: 3px 0;">Ketua RT ${namaRT} / RW ${rw}</p>
+            <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px;">${ketuaRT}</p>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+          <p style="font-size: 12pt; margin: 0;">Mengetahui,</p>
+          <p style="font-size: 12pt; margin: 0;">Ketua RW ${rw}</p>
+          <p style="font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 50px;">.............................</p>
+        </div>
+      `;
+
+      document.body.appendChild(container);
+
+      // Capture dengan html2canvas
+      const canvas = await html2canvas(container, {
+        scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
-        windowWidth: a4Width,
-        windowHeight: a4Height,
       });
 
-      // Konversi ke JPG dengan kualitas maksimal
+      document.body.removeChild(container);
+
+      // Download
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       const link = document.createElement('a');
       link.href = dataUrl;
-      link.download = `Surat_Pengantar_${previewSurat.namaPemohon.replace(/\s+/g, '_')}.jpg`;
+      link.download = `Surat_Pengantar_${surat.namaPemohon.replace(/\s+/g, '_')}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
