@@ -341,27 +341,19 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
       ctx.beginPath();
       ctx.moveTo(marginLeft, y);
       ctx.lineTo(a4W - marginRight, y);
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 3;
       ctx.stroke();
-      ctx.moveTo(marginLeft, y + 3);
-      ctx.lineTo(a4W - marginRight, y + 3);
-      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(marginLeft, y + 4);
+      ctx.lineTo(a4W - marginRight, y + 4);
+      ctx.lineWidth = 1;
       ctx.stroke();
       y += 25;
       
-      // JUDUL SURAT
+      // JUDUL SURAT (tanpa underline)
       ctx.font = 'bold 14pt "Times New Roman", serif';
       ctx.textAlign = 'center';
       ctx.fillText('SURAT PENGANTAR', a4W / 2, y);
-      y += 5;
-      
-      // Underline judul
-      const titleWidth = ctx.measureText('SURAT PENGANTAR').width;
-      ctx.beginPath();
-      ctx.moveTo((a4W - titleWidth) / 2, y + 18);
-      ctx.lineTo((a4W + titleWidth) / 2, y + 18);
-      ctx.lineWidth = 1;
-      ctx.stroke();
       y += 25;
       
       ctx.font = '11pt "Times New Roman", serif';
