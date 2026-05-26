@@ -218,7 +218,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
           .ttd-wrapper { display: flex; justify-content: space-between; margin-top: 40px; padding: 0 20px; }
           .ttd-box { text-align: center; min-width: 180px; }
           .ttd-jabatan { font-size: 11pt; margin-bottom: 5px; }
-          .ttd-nama { font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 70px; }
+          .ttd-nama { font-size: 12pt; font-weight: bold; margin-top: 70px; }
           .mengetahui { text-align: center; margin-top: 50px; }
         </style>
       </head>
@@ -252,7 +252,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
         <div class="mengetahui">
           <p>Mengetahui,</p>
           <p>Ketua RW ${rw}</p>
-          <p class="ttd-nama" style="margin-top: 70px; display: inline-block;">.................................</p>
+          <p class="ttd-nama" style="margin-top: 70px; display: inline-block;">${surat.ketuaRW || '.........................'}</p>
         </div>
       </body>
       </html>
@@ -807,7 +807,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                     {/* KOLOM KIRI - Yang Bersangkutan */}
                     <div style={{ width: '40%' }}>
                       <p style={{ fontSize: '12pt', margin: 0 }}>Yang Bersangkutan,</p>
-                      <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '50px', textAlign: 'center' }}>
+                      <p style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '50px', textAlign: 'center' }}>
                         {previewSurat.namaPemohon}
                       </p>
                     </div>
@@ -815,7 +815,7 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                     <div style={{ width: '40%', textAlign: 'center' }}>
                       <p style={{ fontSize: '12pt', margin: 0 }}>{rtInfo?.kelurahan || 'SUKAMAJU'}, {getTanggalHariIni()}</p>
                       <p style={{ fontSize: '12pt', margin: '2px 0' }}>Ketua RT {rtInfo?.namaRT || '001'} / RW {rtInfo?.rw || '002'}</p>
-                      <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '50px' }}>
+                      <p style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '50px' }}>
                         {rtInfo?.ketuaRT || '...........................'}
                       </p>
                     </div>
@@ -825,8 +825,8 @@ export default function TabDokumenRT({ isAdmin = true, isActive = false, rtInfo 
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ fontSize: '12pt', margin: 0 }}>Mengetahui,</p>
                     <p style={{ fontSize: '12pt', margin: 0 }}>Ketua RW {rtInfo?.rw || '002'}</p>
-                    <p style={{ fontSize: '12pt', fontWeight: 'bold', textDecoration: 'underline', marginTop: '50px' }}>
-                      .............................
+                    <p style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '50px' }}>
+                      {previewSurat.ketuaRW || '.............................'}
                     </p>
                   </div>
                 </div>
